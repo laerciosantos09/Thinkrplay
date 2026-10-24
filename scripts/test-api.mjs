@@ -21,7 +21,9 @@ globalThis.__pg = pg;
 
 const shim = `export const sql = (...a) => globalThis.__sql(...a);
 export const assertDb = () => {};
-export class HttpError extends Error { constructor(status, message, expose = false, extra) { super(message); this.status = status; this.expose = expose; this.extra = extra; } }`;
+export class HttpError extends Error { constructor(status, message, expose = false, extra) { super(message); this.status = status; this.expose = expose; this.extra = extra; } }
+export const isMissingTable = (err) => err?.code === '42P01';
+export const orIfMissing = async (run, fallback) => { try { return await run(); } catch (err) { if (isMissingTable(err)) return fallback; throw err; } };`;
 writeFileSync(path.join(out, 'db-shim.js'), shim);
 
 const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'billing', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings'];
@@ -671,6 +673,46 @@ for (let i = 0; i < 3; i++) { const r = await startSudoku(); assert.equal(r.stat
 await pg.query(`DELETE FROM auth_attempts`);
 assert.equal(await code('profile', { body: { action: 'delete', password: 'senha-forte-8', confirm: 'EXCLUIR' } }), 200);
 assert.equal((await pg.query(`SELECT count(*)::int n FROM play_energy WHERE user_id=$1`, [evaId])).rows[0].n, 0);
+
+// ===================== Migração pendente não derruba o app: degrada e avisa o admin =====================
+const { readFileSync: readMig } = await import('node:fs');
+const runMigration = async (file) => { for (const st of readMig(path.join(root, 'db/migrations', file), 'utf8').split(/;\s*\n/).map((x) => x.trim()).filter(Boolean)) await pg.query(st); };
+cookie = ''; await ok('auth/register', reg2({ username: 'gil', email: 'gil@x.com', password: 'senha-forte-1' }));
+const gilCookie = cookie;
+cookie = adminC; await pg.query(`UPDATE users SET role='admin' WHERE username='ana'`);
+await flag('energy', true);
+let setup = await ok('settings', { method: 'GET' });
+assert.deepEqual(setup.setup.missingMigrations, [], 'tudo em dia: sem avisos');
+assert.equal(setup.energy.enabled, true);
+
+// 007 pendente: o limite não funciona, mas o jogo segue e o admin é avisado
+await pg.query('DROP TABLE play_energy');
+setup = await ok('settings', { method: 'GET' });
+assert.deepEqual(setup.setup.missingMigrations, ['007_play_energy.sql']);
+assert.equal(setup.energy.enabled, false, 'sem a tabela, o limite fica desligado');
+cookie = gilCookie;
+assert.equal((await ok('settings', { method: 'GET' })).setup, undefined, 'usuário comum não recebe avisos de infraestrutura');
+assert.equal((await startSudoku()).statusCode, 200, 'jogar continua funcionando sem a tabela de energia');
+await runMigration('007_play_energy.sql');
+
+// 006 pendente: ranking e configurações seguem de pé, sem selo Premium
+await pg.query('ALTER TABLE subscriptions RENAME TO subscriptions_off');
+cookie = adminC;
+setup = await ok('settings', { method: 'GET' });
+assert.deepEqual(setup.setup.missingMigrations, ['006_premium.sql']);
+assert.deepEqual([setup.premium.available, setup.premium.active], [false, false]);
+const rkNoSubs = await ok('ranking', { method: 'GET', query: { game: 'all' } });
+assert.ok(rkNoSubs.daily.length > 0 && rkNoSubs.daily.every((r) => r.premium === false), 'ranking funciona sem a tabela de assinaturas');
+await pg.query('ALTER TABLE subscriptions_off RENAME TO subscriptions');
+
+// 005 pendente: tudo opcional desligado, jogo e configurações de pé
+await pg.query('ALTER TABLE app_settings RENAME TO app_settings_off');
+setup = await ok('settings', { method: 'GET' });
+assert.deepEqual(setup.setup.missingMigrations, ['005_app_settings.sql']);
+assert.deepEqual([setup.ads.enabled, setup.energy.enabled], [false, false]);
+cookie = gilCookie; assert.equal((await startSudoku()).statusCode, 200, 'jogar continua funcionando sem a tabela de configurações');
+await pg.query('ALTER TABLE app_settings_off RENAME TO app_settings');
+cookie = adminC; assert.deepEqual((await ok('settings', { method: 'GET' })).setup.missingMigrations, [], 'restaurado');
 
 console.log('API OK');
 process.exit(0);

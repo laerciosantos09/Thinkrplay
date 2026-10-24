@@ -64,6 +64,8 @@ Opcional e **desligado por padrão** (Configurações → Limite de partidas). L
 
 - Só **iniciar** gasta: botão **Jogar**, **Próximo desafio** e **Repetir**. Navegar entre desafios e níveis não gasta. Sem partidas, o botão Jogar fica bloqueado com a contagem regressiva e a oferta do Premium.
 - O estoque é calculado e gasto **no servidor** de forma atômica (não dá para burlar abrindo várias abas), e o tempo parcial até a próxima recarga é preservado.
+- O contador **⚡** fica fixo no topo: dentro do menu no computador e numa faixa logo abaixo dele no celular, em todas as telas.
+- **Se o contador não aparecer:** (1) ligue em *Configurações → Limite de partidas* (vem desligado); (2) rode as migrações `005` e `007` no Neon, pois o painel do admin mostra um aviso amarelo com as que faltam (sem elas o jogo continua funcionando, só sem o limite); (3) recarregue o app (o app instalado busca a versão nova sozinho).
 - Os números ficam em `lib/energy.ts`. Ao perder o Premium, o estoque volta ao limite do plano grátis.
 - **Atenção ao ranking:** o ranking soma pontos, então quem pode jogar mais partidas por hora (Premium) tem vantagem de volume na competição.
 

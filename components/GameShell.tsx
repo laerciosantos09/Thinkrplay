@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import RankingTable from './RankingTable';
 import UnlockInfo from './UnlockInfo';
 import AdSlot from './ads/AdSlot';
-import EnergyBadge from './energy/EnergyBadge';
 import { formatCountdown, useEnergy } from './energy/EnergyContext';
 import { TIER_LABELS } from '../config';
 import { CHALLENGES_PER_TIER, TIERS, Tier, UNLOCK_RULES, isTierUnlocked, nextLockedTier, unlockStatus } from '../lib/tiers';
@@ -100,7 +99,7 @@ const GameShell: React.FC<GameShellProps> = ({ title, slug, ctl, onBack, stats, 
           <h2 className="text-2xl font-black text-ink-800">{title}</h2>
           {stats && <div className="text-xs text-slate-400 font-bold uppercase tracking-widest">{stats}</div>}
         </div>
-        <EnergyBadge />
+        <span className="w-16" />
       </div>
 
       <div role="tablist" aria-label="Nível" className="grid grid-cols-3 gap-2 mb-3">

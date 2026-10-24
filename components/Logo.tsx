@@ -27,13 +27,15 @@ interface LogoProps {
   /** "dark": para fundos escuros (texto branco). "light": para fundos claros. */
   tone?: 'dark' | 'light';
   className?: string;
+  /** Em telas bem estreitas (< 420 px) mostra só o símbolo, para não apertar o menu. */
+  symbolOnlyOnTiny?: boolean;
 }
 
-const Logo: React.FC<LogoProps> = ({ size = 32, tone = 'dark', className = '' }) => (
+const Logo: React.FC<LogoProps> = ({ size = 32, tone = 'dark', className = '', symbolOnlyOnTiny = false }) => (
   <span className={`inline-flex items-center gap-2.5 ${className}`}>
     <LogoMark size={size} />
     <span
-      className={`font-display font-extrabold tracking-tight leading-none ${tone === 'dark' ? 'text-white' : 'text-ink-900'}`}
+      className={`font-display font-extrabold tracking-tight leading-none ${symbolOnlyOnTiny ? 'max-[420px]:hidden' : ''} ${tone === 'dark' ? 'text-white' : 'text-ink-900'}`}
       style={{ fontSize: size * 0.72 }}
     >
       Thinkr<span className={tone === 'dark' ? 'text-mint-400' : 'text-brand-600'}>play</span>
