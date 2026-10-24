@@ -1,138 +1,88 @@
-
-import React, { useState, useEffect } from 'react';
-import RankingTable from '../components/RankingTable';
-import { getGameRankings, saveScore } from '../services/gameService';
-
-interface MemoryGameProps {
-  onBack: () => void;
-}
+import React, { useEffect, useState } from 'react';
+import GameShell, { WinPanel } from '../components/GameShell';
+import { useProgress } from '../services/useProgress';
+import { mulberry32, seedFor, shuffle } from '../lib/rng';
 
 const EMOJIS = ['🚀', '🍕', '🎸', '⚽', '🕹️', '🎨', '🦁', '🌙', '🌊', '🔥', '💎', '🍒', '🎭', '🚲', '🍔', '🍦'];
 
-const MemoryGame: React.FC<MemoryGameProps> = ({ onBack }) => {
+const pairsForLevel = (level: number) => Math.min(12, 3 + Math.ceil(level / 4));
+
+const MemoryGame: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [level, setLevel] = useState(1);
-  const [cards, setCards] = useState<{ id: number, emoji: string, flipped: boolean, matched: boolean }[]>([]);
-  const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
+  const { unlocked, rankingKey, saveError, complete } = useProgress('memory', setLevel);
+  const [attempt, setAttempt] = useState(0);
+  const [cards, setCards] = useState<string[]>([]);
+  const [open, setOpen] = useState<number[]>([]);
+  const [matched, setMatched] = useState<Set<number>>(new Set());
   const [moves, setMoves] = useState(0);
-  const [isWon, setIsWon] = useState(false);
-  const [rankings, setRankings] = useState(getGameRankings('memory'));
-
-  const setupLevel = (lvl: number) => {
-    // Determina número de pares baseado no nível (começa com 4 pares, aumenta a cada nível)
-    const numPairs = Math.min(8 + Math.floor(lvl / 10), 16);
-    const selectedEmojis = EMOJIS.slice(0, numPairs);
-    const pairEmojis = [...selectedEmojis, ...selectedEmojis];
-    
-    // Shuffle determinístico
-    const seed = lvl * 99;
-    const shuffled = pairEmojis
-      .map((emoji, i) => ({ id: i, emoji, flipped: false, matched: false, sort: (Math.sin(seed + i) * 10000) % 1 }))
-      .sort((a, b) => a.sort - b.sort);
-
-    setCards(shuffled);
-    setFlippedIndices([]);
-    setMoves(0);
-    setIsWon(false);
-  };
+  const [points, setPoints] = useState<number | null>(null);
+  const pairs = pairsForLevel(level);
 
   useEffect(() => {
-    setupLevel(level);
-  }, [level]);
+    const rng = mulberry32(seedFor('memory', level) + attempt);
+    const chosen = shuffle(EMOJIS, rng).slice(0, pairs);
+    setCards(shuffle([...chosen, ...chosen], rng));
+    setOpen([]);
+    setMatched(new Set());
+    setMoves(0);
+    setPoints(null);
+  }, [level, attempt, pairs]);
 
-  const handleFlip = (idx: number) => {
-    if (flippedIndices.length === 2 || cards[idx].flipped || cards[idx].matched || isWon) return;
+  const flip = (idx: number) => {
+    if (open.length === 2 || open.includes(idx) || matched.has(idx) || points !== null) return;
+    const nextOpen = [...open, idx];
+    setOpen(nextOpen);
+    if (nextOpen.length < 2) return;
 
-    const newCards = [...cards];
-    newCards[idx].flipped = true;
-    setCards(newCards);
-
-    const newFlipped = [...flippedIndices, idx];
-    setFlippedIndices(newFlipped);
-
-    if (newFlipped.length === 2) {
-      setMoves(m => m + 1);
-      const [first, second] = newFlipped;
-      if (cards[first].emoji === cards[second].emoji) {
-        newCards[first].matched = true;
-        newCards[second].matched = true;
-        setCards(newCards);
-        setFlippedIndices([]);
-        
-        if (newCards.every(c => c.matched)) {
-          setIsWon(true);
-          const user = JSON.parse(localStorage.getItem('passatempo_user') || '{}');
-          // Pontuação: quanto menos movimentos, melhor
-          const score = Math.max(10, 500 - (moves * 10) + (level * 50));
-          saveScore('memory', user.username || 'Anônimo', score, level);
-          setRankings(getGameRankings('memory'));
-        }
-      } else {
-        setTimeout(() => {
-          newCards[first].flipped = false;
-          newCards[second].flipped = false;
-          setCards(newCards);
-          setFlippedIndices([]);
-        }, 1000);
+    const used = moves + 1;
+    setMoves(used);
+    const [a, b] = nextOpen;
+    if (cards[a] === cards[b]) {
+      const done = new Set(matched).add(a).add(b);
+      setMatched(done);
+      setOpen([]);
+      if (done.size === cards.length) {
+        const earned = Math.max(50, Math.min(4000, 150 + level * 2 - (used - pairs) * 8));
+        setPoints(earned);
+        complete(level, earned);
       }
+    } else {
+      setTimeout(() => setOpen([]), 800);
     }
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-      <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-        <div className="flex justify-between items-center mb-6">
-          <button onClick={onBack} className="text-slate-400 hover:text-indigo-600 transition-colors font-bold">
-            &larr; Voltar
-          </button>
-          <div className="flex flex-col items-center">
-             <h2 className="text-2xl font-black text-slate-800">Memória</h2>
-             <span className="text-xs text-slate-400 font-bold uppercase tracking-widest">{moves} movimentos</span>
-          </div>
-          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
-             <button onClick={() => setLevel(Math.max(1, level - 1))} className="w-8 h-8 flex items-center justify-center bg-white rounded shadow-sm hover:bg-indigo-50">&lsaquo;</button>
-             <span className="px-3 font-bold text-slate-700 min-w-[80px] text-center">Nível {level}</span>
-             <button onClick={() => setLevel(Math.min(1000, level + 1))} className="w-8 h-8 flex items-center justify-center bg-white rounded shadow-sm hover:bg-indigo-50">&rsaquo;</button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-4 md:grid-cols-6 gap-3 md:gap-4 max-w-[600px] mx-auto">
-          {cards.map((card, idx) => (
-            <div
-              key={card.id}
-              onClick={() => handleFlip(idx)}
-              className={`
-                aspect-square rounded-2xl cursor-pointer transition-all duration-500 perspective-1000 preserve-3d
-                ${card.flipped || card.matched ? '[transform:rotateY(180deg)]' : ''}
-              `}
+    <GameShell title="Memória" slug="memory" level={level} unlocked={unlocked} onLevel={setLevel} onBack={onBack}
+      rankingKey={rankingKey} stats={`${moves} movimentos · ${pairs} pares`}>
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 sm:gap-3 max-w-[560px] mx-auto">
+        {cards.map((emoji, idx) => {
+          const faceUp = open.includes(idx) || matched.has(idx);
+          return (
+            <button
+              key={idx}
+              onClick={() => flip(idx)}
+              aria-label={faceUp ? emoji : 'Carta virada'}
+              className={`aspect-square rounded-2xl text-3xl sm:text-4xl flex items-center justify-center border-2 transition-all
+                ${matched.has(idx) ? 'bg-green-50 border-green-200' : faceUp ? 'bg-white border-indigo-300' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
             >
-              <div className="relative w-full h-full text-center transition-all duration-500 [transform-style:preserve-3d]">
-                <div className="absolute w-full h-full bg-slate-800 [backface-visibility:hidden] rounded-2xl border-2 border-slate-700 flex items-center justify-center text-3xl shadow-lg">
-                  <span className="text-indigo-500/30">?</span>
-                </div>
-                <div className="absolute w-full h-full bg-white [backface-visibility:hidden] [transform:rotateY(180deg)] rounded-2xl border-2 border-indigo-200 flex items-center justify-center text-4xl shadow-md">
-                  {card.emoji}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {isWon && (
-          <div className="mt-8 p-6 bg-indigo-50 rounded-2xl border border-indigo-200 text-center animate-fadeIn">
-            <h3 className="text-2xl font-black text-indigo-700 mb-2">Excelente Memória!</h3>
-            <p className="text-indigo-600">Você concluiu o nível {level} em {moves} movimentos.</p>
-            <button 
-              onClick={() => setLevel(level + 1)}
-              className="mt-4 bg-indigo-600 text-white px-8 py-2 rounded-full font-bold shadow-lg hover:bg-indigo-700 transition-colors"
-            >
-              Próximo Desafio
+              {faceUp ? emoji : <span className="text-indigo-400/40">?</span>}
             </button>
-          </div>
-        )}
+          );
+        })}
       </div>
 
-      <RankingTable scores={rankings} />
-    </div>
+      {points !== null && (
+        <WinPanel
+          title="Excelente memória!"
+          text={`Nível ${level} em ${moves} movimentos.`}
+          points={points}
+          saveError={saveError}
+          canAdvance={level < unlocked}
+          onNext={() => setLevel(level + 1)}
+          onRetry={() => setAttempt((a) => a + 1)}
+        />
+      )}
+    </GameShell>
   );
 };
 

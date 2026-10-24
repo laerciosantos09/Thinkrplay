@@ -1,29 +1,14 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import RankingTable from '../components/RankingTable';
-import { getGameRankings } from '../services/gameService';
-import { GameInfo } from '../types';
+import { GAMES } from '../config';
 
 interface GlobalRankingProps {
   onBack: () => void;
 }
 
-const GAMES: GameInfo[] = [
-  { id: '1', name: 'Sudoku', slug: 'sudoku', description: '', icon: '🔢', color: 'bg-blue-500' },
-  { id: '2', name: 'Jogo da Memória', slug: 'memory', description: '', icon: '🧩', color: 'bg-purple-500' },
-  { id: '3', name: 'Cobrinha', slug: 'snake', description: '', icon: '🐍', color: 'bg-green-500' },
-  { id: '4', name: 'Quiz', slug: 'quiz', description: '', icon: '💡', color: 'bg-amber-500' },
-  { id: '5', name: 'Reação', slug: 'reaction', description: '', icon: '⚡', color: 'bg-rose-500' },
-];
-
 const GlobalRanking: React.FC<GlobalRankingProps> = ({ onBack }) => {
   const [selectedGameSlug, setSelectedGameSlug] = useState<string>(GAMES[0].slug);
-  const [rankings, setRankings] = useState(getGameRankings(GAMES[0].slug));
-
-  useEffect(() => {
-    setRankings(getGameRankings(selectedGameSlug));
-  }, [selectedGameSlug]);
-
   const currentGame = GAMES.find(g => g.slug === selectedGameSlug);
 
   return (
@@ -79,7 +64,7 @@ const GlobalRanking: React.FC<GlobalRankingProps> = ({ onBack }) => {
               </div>
             </div>
             
-            <RankingTable scores={rankings} />
+            <RankingTable slug={selectedGameSlug} />
           </div>
           
           <div className="mt-8 bg-indigo-600 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-indigo-100">

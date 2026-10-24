@@ -1,84 +1,64 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import SudokuGame from './pages/SudokuGame';
 import MemoryGame from './pages/MemoryGame';
-import SnakeGame from './pages/SnakeGame';
-import QuizGame from './pages/QuizGame';
-import ReactionGame from './pages/ReactionGame';
+import SequenceGame from './pages/SequenceGame';
+import HanoiGame from './pages/HanoiGame';
+import LightsGame from './pages/LightsGame';
+import MastermindGame from './pages/MastermindGame';
 import GlobalRanking from './pages/GlobalRanking';
 import Navbar from './components/Navbar';
-import { User } from './types';
+import { Session } from './types';
+import { loadSession, setUnauthorizedHandler, storeSession } from './services/api';
+
+const GAME_PAGES: Record<string, React.FC<{ onBack: () => void }>> = {
+  sudoku: SudokuGame,
+  memory: MemoryGame,
+  sequence: SequenceGame,
+  hanoi: HanoiGame,
+  lights: LightsGame,
+  mastermind: MastermindGame,
+};
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
-  const [currentPage, setCurrentPage] = useState<string>('dashboard');
-  const [isLoading, setIsLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [page, setPage] = useState('dashboard');
 
-  useEffect(() => {
-    const savedUser = localStorage.getItem('passatempo_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
+  const logout = useCallback(() => {
+    storeSession(null);
+    setSession(null);
+    setPage('dashboard');
   }, []);
 
-  const handleLogin = (userData: User) => {
-    setUser(userData);
-    localStorage.setItem('passatempo_user', JSON.stringify(userData));
-    setCurrentPage('dashboard');
-  };
+  useEffect(() => setUnauthorizedHandler(logout), [logout]);
 
-  const handleLogout = () => {
-    setUser(null);
-    localStorage.removeItem('passatempo_user');
-    setCurrentPage('dashboard');
-  };
-
-  if (isLoading) {
+  if (!session) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
-      </div>
+      <Login
+        onLogin={(s) => {
+          storeSession(s);
+          setSession(s);
+          setPage('dashboard');
+        }}
+      />
     );
   }
 
-  if (!user) {
-    return <Login onLogin={handleLogin} />;
-  }
-
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'dashboard':
-        return <Dashboard onSelectGame={(slug) => setCurrentPage(slug)} onGoToRanking={() => setCurrentPage('ranking')} />;
-      case 'ranking':
-        return <GlobalRanking onBack={() => setCurrentPage('dashboard')} />;
-      case 'sudoku':
-        return <SudokuGame onBack={() => setCurrentPage('dashboard')} />;
-      case 'memory':
-        return <MemoryGame onBack={() => setCurrentPage('dashboard')} />;
-      case 'snake':
-        return <SnakeGame onBack={() => setCurrentPage('dashboard')} />;
-      case 'quiz':
-        return <QuizGame onBack={() => setCurrentPage('dashboard')} />;
-      case 'reaction':
-        return <ReactionGame onBack={() => setCurrentPage('dashboard')} />;
-      default:
-        return <Dashboard onSelectGame={(slug) => setCurrentPage(slug)} onGoToRanking={() => setCurrentPage('ranking')} />;
-    }
-  };
+  const home = () => setPage('dashboard');
+  const Game = GAME_PAGES[page];
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Navbar 
-        user={user} 
-        onLogout={handleLogout} 
-        onHome={() => setCurrentPage('dashboard')} 
-        onRanking={() => setCurrentPage('ranking')}
-      />
-      <main className="container mx-auto px-4 py-8">
-        {renderPage()}
+      <Navbar user={session.user} onLogout={logout} onHome={home} onRanking={() => setPage('ranking')} />
+      <main className="container mx-auto px-4 py-6 sm:py-8">
+        {Game ? (
+          <Game key={page} onBack={home} />
+        ) : page === 'ranking' ? (
+          <GlobalRanking onBack={home} />
+        ) : (
+          <Dashboard onSelectGame={setPage} onGoToRanking={() => setPage('ranking')} />
+        )}
       </main>
     </div>
   );
