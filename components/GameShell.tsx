@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import RankingTable from './RankingTable';
 import UnlockInfo from './UnlockInfo';
+import AdSlot from './ads/AdSlot';
 import { TIER_LABELS } from '../config';
 import { CHALLENGES_PER_TIER, TIERS, Tier, UNLOCK_RULES, isTierUnlocked, nextLockedTier, unlockStatus } from '../lib/tiers';
 import { PlayCtl } from '../services/usePlay';
@@ -108,6 +109,7 @@ export const WinPanel: React.FC<{ title: string; text: string; ctl: PlayCtl }> =
   const r = ctl.result;
   if (!r) return null;
   return (
+    <>
     <div className="mt-6 p-6 bg-green-50 rounded-2xl border border-green-200 text-center animate-fadeIn">
       <h3 className="text-xl font-black text-green-700 mb-1">{title}</h3>
       <p className="text-green-700">{text}</p>
@@ -142,6 +144,9 @@ export const WinPanel: React.FC<{ title: string; text: string; ctl: PlayCtl }> =
         )}
       </div>
     </div>
+    {/* Anúncio só depois de concluir o desafio e afastado dos botões (nunca durante a partida). */}
+    <AdSlot placement="result" className="mt-8" />
+    </>
   );
 };
 

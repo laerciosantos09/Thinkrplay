@@ -53,14 +53,44 @@ Cada jogo tem 3 níveis (**Easy**, **Medium**, **Hard**) com **500 desafios** ca
 - São calculados no servidor a cada consulta a partir das pontuações: cada desafio concluído entra no ranking imediatamente. A tela atualiza sozinha a cada 20 s enquanto está aberta (e na hora, quando é você quem conclui).
 - Mostram o top 10 e, para quem está logado, a própria posição mesmo fora do top 10.
 
+## Anúncios (Google AdSense)
+
+A estrutura já está pronta e **desligada por padrão**: nenhum script do Google é carregado até que (1) as variáveis abaixo existam, (2) o administrador ligue o interruptor em **Configurações → Anúncios** e (3) o usuário escolha no aviso de anúncios.
+
+| Variável (build na Vercel) | O que é |
+| --- | --- |
+| `VITE_ADSENSE_CLIENT` | Seu identificador de editor, `ca-pub-XXXXXXXXXXXXXXXX` (AdSense → Conta → Informações da conta). Também gera o `/ads.txt` automaticamente. |
+| `VITE_ADSENSE_SLOT_HOME` | ID do bloco de anúncio do painel de jogos |
+| `VITE_ADSENSE_SLOT_RANKING` | ID do bloco da tela de ranking |
+| `VITE_ADSENSE_SLOT_RESULT` | ID do bloco exibido depois de concluir um desafio |
+| `VITE_ADSENSE_TEST` | Opcional: `true` mostra anúncios de **teste** (não contam impressões nem cliques) |
+
+Para cada bloco, crie no AdSense um **bloco de anúncios** do tipo "Display" e use o número do `data-ad-slot` (10 dígitos). Variável sem valor = aquele espaço não mostra anúncio. Valores são públicos (vão embutidos no site), não marque como *Sensitive*.
+
+**Como ligar quando tiver o domínio**
+1. Publique o app no domínio próprio (o AdSense não aceita `*.vercel.app`) e cadastre o site no AdSense.
+2. Aguarde a aprovação. Páginas públicas com texto (como `/termos` e `/privacidade`) ajudam, pois o app fica atrás de login.
+3. Na Vercel, defina as variáveis acima (comece com `VITE_ADSENSE_TEST=true`) e faça um novo deploy.
+4. Confira que `https://seudominio.com/ads.txt` mostra `google.com, pub-..., DIRECT, f08c47fec0942fa0`.
+5. Em **Configurações → Anúncios**, ligue o interruptor. O painel mostra quais variáveis foram detectadas.
+6. Teste, depois remova `VITE_ADSENSE_TEST` e faça novo deploy.
+
+**Onde aparecem:** painel de jogos, ranking e depois de concluir um desafio (afastado dos botões). **Nunca** aparecem durante a partida, no login, no Perfil, no painel do admin nem nas páginas legais.
+
+**Consentimento:** um aviso próprio pergunta se a pessoa aceita anúncios *personalizados* ou apenas *limitados*; a escolha fica no aparelho e pode ser mudada no Perfil. Se for distribuir na União Europeia ou no Reino Unido, o Google exige um aviso certificado (TCF): use o Funding Choices do próprio AdSense no lugar deste.
+
+**Segurança (CSP):** `vercel.json` já libera os domínios do Google para anúncios (`*.googlesyndication.com`, `*.doubleclick.net` e afins). Se ao ligar os anúncios não aparecerem, abra o Console do navegador, procure mensagens "Refused to ..." e acrescente o domínio indicado à diretiva correspondente da CSP em `vercel.json`.
+
+**Textos legais:** já mencionam anúncios de forma condicional ("se os anúncios estiverem ativos"). Revise-os com um advogado antes de ligar.
+
 ## Configurações do administrador
 
 Quem tem perfil `admin` (veja "Criar o admin" abaixo) vê **⚙️ Configurações** no menu e pode ativar ou desativar cada jogo.
 
 - Jogo desativado some do painel e do ranking, e o servidor recusa iniciar, continuar ou finalizar partidas dele.
 - O progresso e os pontos ficam guardados; ao reativar, o jogo volta como estava.
-- A permissão é conferida no banco a cada chamada (`users.role`), então rebaixar um admin vale na hora. A API de configurações é `GET/POST /api/games`.
-- Tabela: `game_settings` (jogo sem linha conta como ativo).
+- A permissão é conferida no banco a cada chamada (`users.role`), então rebaixar um admin vale na hora. A API de configurações é `GET/POST /api/settings` (jogos e anúncios).
+- Tabelas: `game_settings` (jogo sem linha conta como ativo) e `app_settings` (recursos do app, como os anúncios; sem linha = desligado).
 
 ## Scripts do banco (Neon)
 
@@ -72,6 +102,7 @@ O SQL fica em **migrações numeradas** (`db/migrations/`). Cada uma roda sozinh
 | `db/migrations/002_levels_tiers.sql` | Níveis Easy/Medium/Hard: coluna `tier` e tabela `tier_progress` (**remove** a antiga `progress`) |
 | `db/migrations/003_game_settings.sql` | Configurações do admin (jogos ativos/desativados) |
 | `db/migrations/004_profile_terms_rankings.sql` | Perfil (versão de sessão), aceite dos Termos e índice do ranking geral |
+| `db/migrations/005_app_settings.sql` | Configurações gerais do app (interruptor dos anúncios) |
 | `db/schema.sql` | Tudo junto, para banco novo. **Gerado** das migrações (`npm run db:schema`) |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
 | `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas |

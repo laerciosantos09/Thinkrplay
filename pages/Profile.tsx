@@ -3,6 +3,7 @@ import { User } from '../types';
 import { changePassword, deleteAccount, updateUsername } from '../services/api';
 import { USERNAME_PATTERN } from '../lib/legal';
 import { SUPPORT_EMAIL } from '../config';
+import { useAds } from '../components/ads/AdsContext';
 
 interface ProfileProps {
   user: User;
@@ -33,6 +34,7 @@ const Message: React.FC<{ error?: string | null; ok?: string | null }> = ({ erro
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado.');
 
 const Profile: React.FC<ProfileProps> = ({ user, onUserChange, onDeleted, onBack }) => {
+  const ads = useAds();
   // nome de usuário
   const [username, setUsername] = useState(user.username);
   const [nameMsg, setNameMsg] = useState<{ error?: string; ok?: string }>({});
@@ -162,6 +164,20 @@ const Profile: React.FC<ProfileProps> = ({ user, onUserChange, onDeleted, onBack
           </button>
         </form>
       </Card>
+
+      {ads.active && (
+        <Card title="Anúncios" hint="Escolha como os anúncios do Google AdSense são exibidos para você.">
+          <div className="flex flex-col sm:flex-row gap-2" role="radiogroup" aria-label="Preferência de anúncios">
+            {([['personalized', 'Personalizados'], ['limited', 'Limitados (não personalizados)']] as const).map(([value, text]) => (
+              <button key={value} role="radio" aria-checked={ads.consent === value} onClick={() => ads.setConsent(value)}
+                className={`flex-1 rounded-xl px-4 py-3 text-sm font-black border-2 ${ads.consent === value ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-100 text-slate-600 hover:bg-slate-50'}`}>
+                {text}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-400 mt-2">A escolha vale para os próximos anúncios exibidos neste aparelho.</p>
+        </Card>
+      )}
 
       <Card title="Termos, privacidade e suporte">
         <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm font-bold">

@@ -24,7 +24,7 @@ export const assertDb = () => {};
 export class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }`;
 writeFileSync(path.join(out, 'db-shim.js'), shim);
 
-const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'auth/logout', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'games'];
+const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'auth/logout', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings'];
 await build({
   entryPoints: Object.fromEntries(names.map((n) => [n, path.join(root, 'api', `${n}.ts`)])),
   outdir: out, bundle: true, format: 'esm', platform: 'node', packages: 'external',
@@ -274,18 +274,18 @@ assert.equal((await pg.query(`SELECT role FROM users WHERE username='ana'`)).row
 
 // --- configurações de jogos (somente admin altera; todos os logados veem)
 const adminCookie = cookie;
-assert.equal(await code('games', { method: 'GET', headers: { cookie: '' } }), 401, 'precisa estar logado');
-const list0 = await ok('games', { method: 'GET' });
+assert.equal(await code('settings', { method: 'GET', headers: { cookie: '' } }), 401, 'precisa estar logado');
+const list0 = await ok('settings', { method: 'GET' });
 assert.equal(list0.games.length, 6);
 assert.ok(list0.games.every((g) => g.enabled), 'tudo habilitado por padrão');
 cookie = anaCookie; // usuário comum
-assert.equal((await ok('games', { method: 'GET' })).games.length, 6);
-assert.equal(await code('games', { body: { game: 'memory', enabled: false } }), 403, 'usuário comum não altera');
+assert.equal((await ok('settings', { method: 'GET' })).games.length, 6);
+assert.equal(await code('settings', { body: { game: 'memory', enabled: false } }), 403, 'usuário comum não altera');
 const inflight = await ok('play/start', { body: { game: 'memory', tier: 'easy', challenge: 11 } }); // partida em andamento
 cookie = adminCookie;
-assert.equal(await code('games', { body: { game: 'xadrez', enabled: false } }), 400);
-assert.equal(await code('games', { body: { game: 'memory', enabled: 'nao' } }), 400);
-const off = await ok('games', { body: { game: 'memory', enabled: false } });
+assert.equal(await code('settings', { body: { game: 'xadrez', enabled: false } }), 400);
+assert.equal(await code('settings', { body: { game: 'memory', enabled: 'nao' } }), 400);
+const off = await ok('settings', { body: { game: 'memory', enabled: false } });
 assert.equal(off.games.find((g) => g.slug === 'memory').enabled, false);
 assert.ok(off.games.find((g) => g.slug === 'memory').updatedAt, 'registra quando foi alterado');
 assert.equal(off.games.filter((g) => g.enabled).length, 5, 'só o memory foi desativado');
@@ -296,14 +296,14 @@ assert.match(blockedStart.body.error, /desativado/);
 assert.equal((await start('sudoku', 'easy', 1)).statusCode, 200, 'os outros jogos seguem funcionando');
 assert.equal(await code('play/finish', { body: { playId: inflight.playId, proof: { flips: [[0, 1]] } } }), 403, 'partida em andamento também é bloqueada');
 cookie = adminCookie;
-assert.equal((await ok('games', { body: { game: 'memory', enabled: true } })).games.every((g) => g.enabled), true);
+assert.equal((await ok('settings', { body: { game: 'memory', enabled: true } })).games.every((g) => g.enabled), true);
 cookie = anaCookie;
 assert.equal((await start('memory', 'easy', 11)).statusCode, 200, 'reabilitado volta a funcionar');
 assert.equal(await code('play/finish', { body: { playId: inflight.playId, proof: { flips: [[0, 1]] } } }), 422, 'passa do bloqueio (prova inválida)');
 // o perfil é conferido no banco: rebaixar o admin vale na hora, mesmo com o token antigo
 await pg.query(`UPDATE users SET role='user' WHERE lower(email)='admin@teste.com'`);
 cookie = adminCookie;
-assert.equal(await code('games', { body: { game: 'memory', enabled: false } }), 403, 'ex-admin perde o acesso imediatamente');
+assert.equal(await code('settings', { body: { game: 'memory', enabled: false } }), 403, 'ex-admin perde o acesso imediatamente');
 
 // --- Termos no cadastro e nomes reservados
 const reg2 = (over) => ({ body: { username: 'novo', email: 'novo@x.com', password: 'senha-forte-9', secretWord: 'escola', acceptTerms: true, ...over } });
@@ -414,11 +414,34 @@ await ok('auth/register', reg2({ username: 'carla', email: 'carla@x.com', passwo
 await pg.query(`UPDATE users SET role='admin' WHERE lower(email)='admin@teste.com'`);
 await pg.query(`DELETE FROM auth_attempts`);
 cookie = ''; await ok('auth/login', { body: { email: 'admin@teste.com', password: 'Outra-Senha-2@' } });
-await ok('games', { body: { game: 'lights', enabled: true } }); // deixa um registro com updated_by = este admin
+await ok('settings', { body: { game: 'lights', enabled: true } }); // deixa um registro com updated_by = este admin
 assert.equal(await code('profile', { body: { action: 'delete', password: 'Outra-Senha-2@', confirm: 'EXCLUIR' } }), 409, 'único admin');
 await pg.query(`UPDATE users SET role='admin' WHERE username='ana'`);
 assert.equal(await code('profile', { body: { action: 'delete', password: 'Outra-Senha-2@', confirm: 'EXCLUIR' } }), 200, 'com outro admin pode');
 assert.equal((await pg.query(`SELECT count(*)::int n FROM game_settings WHERE updated_by IS NULL AND game='lights'`)).rows[0].n, 1, 'registro de configuração permanece (updated_by nulo)');
+
+// --- anúncios: interruptor do admin (desligado por padrão; só admin liga)
+await pg.query(`UPDATE users SET role='admin' WHERE username='ana'`); // ana é admin desde o teste de exclusão do último admin
+cookie = anaCookie;
+assert.equal((await ok('settings', { method: 'GET' })).ads.enabled, false, 'anúncios começam desligados');
+await pg.query(`UPDATE users SET role='user' WHERE username='ana'`);
+assert.equal((await ok('settings', { method: 'GET' })).ads.enabled, false);
+assert.equal(await code('settings', { body: { setting: 'ads', enabled: true } }), 403, 'usuário comum não liga anúncios');
+await pg.query(`UPDATE users SET role='admin' WHERE username='ana'`);
+assert.equal(await code('settings', { body: { setting: 'outra', enabled: true } }), 400, 'configuração desconhecida');
+assert.equal(await code('settings', { body: { setting: 'ads', enabled: 'sim' } }), 400);
+const adsOn = await ok('settings', { body: { setting: 'ads', enabled: true } });
+assert.equal(adsOn.ads.enabled, true);
+assert.equal(adsOn.games.length, 6, 'jogos continuam na resposta');
+assert.equal((await pg.query(`SELECT count(*)::int n FROM app_settings WHERE key='ads' AND enabled AND updated_by IS NOT NULL`)).rows[0].n, 1, 'registra quem alterou');
+await pg.query(`UPDATE users SET role='user' WHERE username='ana'`);
+assert.equal((await ok('settings', { method: 'GET' })).ads.enabled, true, 'usuário comum vê o estado');
+await pg.query(`UPDATE users SET role='admin' WHERE username='ana'`);
+assert.equal((await ok('settings', { body: { setting: 'ads', enabled: false } })).ads.enabled, false, 'desliga de novo');
+const memoryToggle = await ok('settings', { body: { game: 'memory', enabled: false } });
+assert.equal(memoryToggle.games.find((g) => g.slug === 'memory').enabled, false);
+assert.equal(memoryToggle.ads.enabled, false, 'alternar jogo não mexe nos anúncios');
+await ok('settings', { body: { game: 'memory', enabled: true } });
 
 console.log('API OK');
 process.exit(0);

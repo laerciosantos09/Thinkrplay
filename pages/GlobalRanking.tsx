@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import RankingTable from '../components/RankingTable';
 import { GAMES } from '../config';
+import AdSlot from '../components/ads/AdSlot';
 
 interface GlobalRankingProps {
   onBack: () => void;
@@ -74,6 +75,8 @@ const GlobalRanking: React.FC<GlobalRankingProps> = ({ onBack, isEnabled }) => {
             
             <RankingTable slug={selectedGameSlug} />
           </div>
+
+          <AdSlot placement="ranking" className="mt-6" />
           
           <div className="mt-8 bg-brand-600 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-100">
              <div className="relative z-10">

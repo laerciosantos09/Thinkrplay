@@ -47,3 +47,6 @@ h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0
   background-clip: text;
   color: transparent;
 }
+
+/* Espaço de anúncio sem preenchimento (AdSense marca "unfilled"): some, sem deixar caixa vazia. */
+.ad-slot:has(ins[data-ad-status="unfilled"]) { display: none; }

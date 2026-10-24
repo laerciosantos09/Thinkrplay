@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { GAMES, TIER_LABELS } from '../config';
 import { fetchProgress } from '../services/api';
+import AdSlot from '../components/ads/AdSlot';
 import { CHALLENGES_PER_TIER, TIERS, TierProgress, emptyProgress, isTierUnlocked, unlockStatus } from '../lib/tiers';
 
 interface DashboardProps {
@@ -66,6 +67,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectGame, onGoToRanking, isEn
         </button>
       ))}
     </div>
+
+    <AdSlot placement="home" className="mt-8" />
   </div>
   );
 };

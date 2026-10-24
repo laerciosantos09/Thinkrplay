@@ -22,7 +22,7 @@ writeFileSync(path.join(out, 'db-shim.js'), `export const sql = (...a) => global
 export const assertDb = () => {};
 export class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }`);
 
-const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'auth/logout', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'games'];
+const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'auth/logout', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings'];
 await build({
   entryPoints: Object.fromEntries(names.map((n) => [n, path.join(root, 'api', `${n}.ts`)])),
   outdir: out, bundle: true, format: 'esm', platform: 'node', packages: 'external',

@@ -22,3 +22,12 @@ export const assertGameEnabled = async (game: string) => {
   const rows = await sql`SELECT enabled FROM game_settings WHERE game = ${game}`;
   if (rows[0] && rows[0].enabled === false) throw new HttpError(403, 'Este jogo está desativado no momento.');
 };
+
+// Recursos do app que o administrador liga/desliga (tabela app_settings). Sem linha = desligado.
+export const APP_SETTINGS = ['ads'] as const;
+export type AppSetting = (typeof APP_SETTINGS)[number];
+
+export const isAppSettingEnabled = async (key: AppSetting): Promise<boolean> => {
+  const rows = await sql`SELECT enabled FROM app_settings WHERE key = ${key}`;
+  return rows[0]?.enabled === true;
+};

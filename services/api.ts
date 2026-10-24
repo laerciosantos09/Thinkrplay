@@ -50,10 +50,14 @@ export const recoverPassword = (body: { email: string; secretWord: string; newPa
   request<{ ok: true }>('auth/recover', { body });
 
 // Desafios resolvidos por jogo e nível.
-// Jogos habilitados (qualquer usuário logado lê; só admin altera).
-export const fetchGames = () => request<{ games: GameSetting[] }>('games');
-export const setGameEnabled = (game: string, enabled: boolean) =>
-  request<{ games: GameSetting[] }>('games', { body: { game, enabled } });
+// Configurações do app: jogos habilitados e anúncios (qualquer usuário logado lê; só admin altera).
+export interface AppSettings {
+  games: GameSetting[];
+  ads: { enabled: boolean };
+}
+export const fetchSettings = () => request<AppSettings>('settings');
+export const setGameEnabled = (game: string, enabled: boolean) => request<AppSettings>('settings', { body: { game, enabled } });
+export const setAdsEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'ads', enabled } });
 
 export const fetchProgress = () => request<Record<string, Partial<TierProgress>>>('progress');
 export const fetchRanking = (game: string) =>

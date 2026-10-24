@@ -13,9 +13,11 @@ import Profile from './pages/Profile';
 import LegalPage, { LEGAL_ROUTES } from './pages/Legal';
 import TermsGate from './components/TermsGate';
 import { SUPPORT_EMAIL } from './config';
+import { AdsProvider } from './components/ads/AdsContext';
+import ConsentBanner from './components/ads/ConsentBanner';
 import Navbar from './components/Navbar';
 import { GameSetting, User } from './types';
-import { fetchGames, fetchProfile, logout as apiLogout, setUnauthorizedHandler } from './services/api';
+import { fetchProfile, fetchSettings, logout as apiLogout, setUnauthorizedHandler } from './services/api';
 
 const GAME_PAGES: Record<string, React.FC<{ onBack: () => void }>> = {
   sudoku: SudokuGame,
@@ -31,6 +33,7 @@ const MainApp: React.FC = () => {
   const [checking, setChecking] = useState(true);
   const [page, setPage] = useState('dashboard');
   const [games, setGames] = useState<GameSetting[] | null>(null);
+  const [adsEnabled, setAdsEnabled] = useState(false);
 
   const clear = useCallback(() => {
     setUser(null);
@@ -55,9 +58,12 @@ const MainApp: React.FC = () => {
   // Jogos habilitados: recarrega ao entrar e a cada troca de tela (o admin pode ter mudado algo).
   useEffect(() => {
     if (!user) return;
-    fetchGames()
-      .then((r) => setGames(r.games))
-      .catch(() => setGames((g) => g ?? [])); // sem resposta: o servidor continua barrando jogo desativado
+    fetchSettings()
+      .then((r) => {
+        setGames(r.games);
+        setAdsEnabled(r.ads.enabled);
+      })
+      .catch(() => setGames((g) => g ?? [])); // sem resposta: o servidor continua barrando jogo desativado; anúncios ficam como estavam
   }, [user, page]);
 
   // Jogo sem informação conta como habilitado.
@@ -83,6 +89,7 @@ const MainApp: React.FC = () => {
   const Game = GAME_PAGES[page];
 
   return (
+    <AdsProvider enabled={adsEnabled}>
     <div className="min-h-screen bg-slate-50">
       <Navbar user={user} onLogout={logout} onHome={home} onRanking={() => setPage('ranking')} onProfile={() => setPage('profile')}
         onSettings={isAdmin ? () => setPage('settings') : undefined} />
@@ -94,7 +101,7 @@ const MainApp: React.FC = () => {
         ) : page === 'profile' ? (
           <Profile user={user} onUserChange={setUser} onDeleted={clear} onBack={home} />
         ) : page === 'settings' && isAdmin ? (
-          <AdminSettings games={games ?? []} onChange={setGames} onBack={home} />
+          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} onChange={(s) => { setGames(s.games); setAdsEnabled(s.ads.enabled); }} onBack={home} />
         ) : (
           <Dashboard onSelectGame={setPage} onGoToRanking={() => setPage('ranking')} isEnabled={isEnabled} loading={games === null} />
         )}
@@ -103,7 +110,9 @@ const MainApp: React.FC = () => {
         <a href="/termos" className="hover:underline">Termos de Uso</a> · <a href="/privacidade" className="hover:underline">Política de Privacidade</a>
         {SUPPORT_EMAIL && <> · <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:underline">Suporte</a></>}
       </footer>
+      <ConsentBanner />
     </div>
+    </AdsProvider>
   );
 };
 

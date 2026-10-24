@@ -8,6 +8,21 @@ export const APP_TAGLINE = 'Jogos de raciocínio para treinar a mente';
 // Defina na Vercel (Environment Variables): VITE_SUPPORT_EMAIL.
 export const SUPPORT_EMAIL: string | undefined = import.meta.env.VITE_SUPPORT_EMAIL || undefined;
 
+// ---- Anúncios (Google AdSense) -------------------------------------------------------------------------------
+// Tudo vem de variáveis de build da Vercel (valores públicos). Sem VITE_ADSENSE_CLIENT nenhum anúncio é carregado,
+// mesmo que o administrador ligue o interruptor em Configurações. Veja o README ("Anúncios").
+export type AdPlacement = 'home' | 'ranking' | 'result';
+
+export const ADS = {
+  client: import.meta.env.VITE_ADSENSE_CLIENT || undefined, // ca-pub-XXXXXXXXXXXXXXXX
+  slots: {
+    home: import.meta.env.VITE_ADSENSE_SLOT_HOME || undefined, // painel de jogos
+    ranking: import.meta.env.VITE_ADSENSE_SLOT_RANKING || undefined, // tela de ranking
+    result: import.meta.env.VITE_ADSENSE_SLOT_RESULT || undefined, // depois de concluir um desafio
+  } as Record<AdPlacement, string | undefined>,
+  test: import.meta.env.VITE_ADSENSE_TEST === 'true', // anúncios de teste (não contam impressões nem cliques)
+};
+
 export const TIER_LABELS: Record<Tier, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
 export const GAMES: GameInfo[] = [
