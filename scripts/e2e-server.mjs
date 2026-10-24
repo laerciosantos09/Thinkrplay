@@ -20,7 +20,9 @@ globalThis.__sql = async (strings, ...values) =>
 globalThis.__pg = pg;
 writeFileSync(path.join(out, 'db-shim.js'), `export const sql = (...a) => globalThis.__sql(...a);
 export const assertDb = () => {};
-export class HttpError extends Error { constructor(status, message, expose = false, extra) { super(message); this.status = status; this.expose = expose; this.extra = extra; } }`);
+export class HttpError extends Error { constructor(status, message, expose = false, extra) { super(message); this.status = status; this.expose = expose; this.extra = extra; } }
+export const isMissingTable = (err) => err?.code === '42P01';
+export const orIfMissing = async (run, fallback) => { try { return await run(); } catch (err) { if (isMissingTable(err)) return fallback; throw err; } };`);
 
 const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'billing', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings'];
 await build({
@@ -69,6 +71,10 @@ http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/__backdate') { // só para o teste: envelhece partidas abertas
     await pg.query(`UPDATE plays SET started_at = now() - interval '600 seconds' WHERE finished_at IS NULL`);
+    return res.end('ok');
+  }
+  if (url.pathname === '/__sql') { // só para teste: executa um SQL (ex.: simular migração pendente)
+    await pg.query(url.searchParams.get('q'));
     return res.end('ok');
   }
   if (url.pathname === '/__energy') { // só para teste: "envelhece" o relógio de recarga (segundos)

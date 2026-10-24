@@ -1,4 +1,4 @@
-import { HttpError, sql } from './db.js';
+import { HttpError, orIfMissing, sql } from './db.js';
 import { GAME_SLUGS } from './http.js';
 
 export interface GameSetting {
@@ -9,7 +9,7 @@ export interface GameSetting {
 
 // Todos os jogos com seu estado; jogo sem linha na tabela está habilitado.
 export const listGames = async (): Promise<GameSetting[]> => {
-  const rows = await sql`SELECT game, enabled, updated_at FROM game_settings`;
+  const rows = await orIfMissing(() => sql`SELECT game, enabled, updated_at FROM game_settings`, [] as Record<string, any>[]);
   const byGame = new Map(rows.map((r) => [r.game as string, r]));
   return GAME_SLUGS.map((slug) => ({
     slug,
@@ -19,7 +19,7 @@ export const listGames = async (): Promise<GameSetting[]> => {
 };
 
 export const assertGameEnabled = async (game: string) => {
-  const rows = await sql`SELECT enabled FROM game_settings WHERE game = ${game}`;
+  const rows = await orIfMissing(() => sql`SELECT enabled FROM game_settings WHERE game = ${game}`, [] as Record<string, any>[]);
   if (rows[0] && rows[0].enabled === false) throw new HttpError(403, 'Este jogo está desativado no momento.');
 };
 
@@ -28,6 +28,7 @@ export const APP_SETTINGS = ['ads', 'premium', 'energy'] as const;
 export type AppSetting = (typeof APP_SETTINGS)[number];
 
 export const isAppSettingEnabled = async (key: AppSetting): Promise<boolean> => {
-  const rows = await sql`SELECT enabled FROM app_settings WHERE key = ${key}`;
+  // Sem a tabela (migração 005 pendente) o recurso fica desligado, e o jogo segue funcionando.
+  const rows = await orIfMissing(() => sql`SELECT enabled FROM app_settings WHERE key = ${key}`, [] as Record<string, any>[]);
   return rows[0]?.enabled === true;
 };

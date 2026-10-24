@@ -1,6 +1,8 @@
 import React from 'react';
 import { User } from '../types';
 import Logo from './Logo';
+import EnergyBadge from './energy/EnergyBadge';
+import { useEnergy } from './energy/EnergyContext';
 
 interface NavbarProps {
   user: User;
@@ -13,11 +15,15 @@ interface NavbarProps {
   premiumActive?: boolean;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onHome, onRanking, onSettings, onProfile, onPremium, premiumActive }) => (
-  <nav className="bg-ink-900 text-white shadow-lg sticky top-0 z-50 pt-[env(safe-area-inset-top)]">
+const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onHome, onRanking, onSettings, onProfile, onPremium, premiumActive }) => {
+  const { energy } = useEnergy();
+  const showEnergy = Boolean(energy?.enabled && energy.state);
+  return (
+  <header className="sticky top-0 z-50 shadow-lg">
+  <nav className="bg-ink-900 text-white pt-[env(safe-area-inset-top)]">
     <div className="container mx-auto px-4 py-3 flex justify-between items-center">
       <button onClick={onHome} aria-label="Início" className="group">
-        <Logo size={34} className="group-hover:opacity-90 transition-opacity" />
+        <Logo size={34} symbolOnlyOnTiny className="group-hover:opacity-90 transition-opacity" />
       </button>
 
       <div className="flex items-center gap-3 md:gap-8">
@@ -25,6 +31,10 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onHome, onRanking, onSe
           <span className="hidden sm:inline">Ranking Global</span>
           <span className="sm:hidden text-xl" aria-label="Ranking Global">🏆</span>
         </button>
+
+        {showEnergy && (
+          <div className="hidden sm:block"><EnergyBadge /></div>
+        )}
 
         {onPremium && (
           <button onClick={onPremium} className="text-sm font-black text-amber-300 hover:text-amber-200 transition-colors">
@@ -59,6 +69,14 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onHome, onRanking, onSe
       </div>
     </div>
   </nav>
-);
+  {/* Celular: o contador de partidas fica numa faixa própria, sempre visível, para não apertar o menu. */}
+  {showEnergy && (
+    <div className="sm:hidden bg-ink-800 border-t border-white/10 px-4 py-1.5 flex justify-center">
+      <EnergyBadge />
+    </div>
+  )}
+  </header>
+  );
+};
 
 export default Navbar;

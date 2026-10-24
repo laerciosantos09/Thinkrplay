@@ -5,6 +5,14 @@ import { premiumState } from './_lib/premium.js';
 import { energyState } from './_lib/energy.js';
 import { ENERGY } from '../lib/energy.js';
 
+// Migração que cria cada tabela opcional: se faltar, o recurso fica desligado e o administrador é avisado.
+const MIGRATIONS: Record<string, string> = {
+  game_settings: '003_game_settings.sql',
+  app_settings: '005_app_settings.sql',
+  subscriptions: '006_premium.sql',
+  play_energy: '007_play_energy.sql',
+};
+
 // GET: qualquer usuário logado vê os jogos habilitados, se os anúncios estão ligados e a situação do Premium.
 // POST: só administrador altera -> { game, enabled } (jogo) ou { setting: "ads" | "premium", enabled } (recurso do app).
 export default route(['GET', 'POST'], async (req) => {
@@ -32,8 +40,15 @@ export default route(['GET', 'POST'], async (req) => {
     session = await requireSession(req);
   }
   const premium = await premiumState(session);
-  const energyEnabled = await isAppSettingEnabled('energy');
+  const present = (await sql`
+    SELECT to_regclass('public.game_settings') IS NOT NULL AS game_settings, to_regclass('public.app_settings') IS NOT NULL AS app_settings,
+           to_regclass('public.subscriptions') IS NOT NULL AS subscriptions, to_regclass('public.play_energy') IS NOT NULL AS play_energy`)[0];
+  const missing = Object.keys(MIGRATIONS).filter((table) => !present[table]).map((table) => MIGRATIONS[table]);
+  // Não oferece um plano que não dá para contratar: sem a tabela de assinaturas (006 pendente) o Premium fica indisponível.
+  if (!present.subscriptions) premium.available = false;
+  const energyEnabled = Boolean(present.play_energy) && (await isAppSettingEnabled('energy'));
   return {
+    ...(session.role === 'admin' ? { setup: { missingMigrations: missing } } : {}),
     games: await listGames(),
     ads: { enabled: await isAppSettingEnabled('ads') },
     premium,

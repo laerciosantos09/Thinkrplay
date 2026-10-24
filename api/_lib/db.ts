@@ -16,3 +16,15 @@ export class HttpError extends Error {
     super(message);
   }
 }
+
+// Tabela ainda não criada (migração pendente). Recursos opcionais usam isto para degradar em vez de derrubar o app.
+export const isMissingTable = (err: unknown) => (err as { code?: string } | null)?.code === '42P01';
+
+export const orIfMissing = async <T>(run: () => Promise<T>, fallback: T): Promise<T> => {
+  try {
+    return await run();
+  } catch (err) {
+    if (isMissingTable(err)) return fallback;
+    throw err;
+  }
+};

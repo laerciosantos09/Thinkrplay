@@ -36,7 +36,8 @@ const appHandler = route(['POST'], async (req) => {
   const existing = await getSubscription(session.id);
 
   if (body.action === 'checkout') {
-    if (!stripeConfigured() || !(await isAppSettingEnabled('premium'))) {
+    const tableOk = (await sql`SELECT to_regclass('public.subscriptions') IS NOT NULL AS ok`)[0].ok;
+    if (!tableOk || !stripeConfigured() || !(await isAppSettingEnabled('premium'))) {
       throw new HttpError(403, 'O plano Premium não está disponível no momento.');
     }
     if (isSubscriptionActive(existing)) throw new HttpError(409, 'Você já é Premium.');

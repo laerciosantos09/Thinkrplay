@@ -38,6 +38,8 @@ const MainApp: React.FC = () => {
   const [adsEnabled, setAdsEnabled] = useState(false);
   const [premium, setPremium] = useState<PremiumState | null>(null);
   const [energy, setEnergyConfig] = useState<EnergySettings | null>(null);
+  const [missingMigrations, setMissingMigrations] = useState<string[]>([]);
+  const [settingsFailed, setSettingsFailed] = useState(false);
   // Voltou do pagamento do Stripe (?premium=success): abre a tela do Premium aguardando a confirmação.
   const [justPaid, setJustPaid] = useState(() => new URLSearchParams(window.location.search).get('premium') === 'success');
 
@@ -67,6 +69,8 @@ const MainApp: React.FC = () => {
     setAdsEnabled(r.ads.enabled);
     setPremium(r.premium);
     setEnergyConfig(r.energy);
+    setMissingMigrations(r.setup?.missingMigrations ?? []);
+    setSettingsFailed(false);
   }, []);
 
   const setEnergyState = useCallback((state: EnergyState) => setEnergyConfig((e) => (e ? { ...e, state } : e)), []);
@@ -75,7 +79,10 @@ const MainApp: React.FC = () => {
 
   useEffect(() => {
     if (!user) return;
-    refreshSettings().catch(() => setGames((g) => g ?? [])); // sem resposta: o servidor continua barrando jogo desativado
+    refreshSettings().catch(() => {
+      setGames((g) => g ?? []); // sem resposta: o servidor continua barrando jogo desativado
+      setSettingsFailed(true);
+    });
   }, [user, page, refreshSettings]);
 
   useEffect(() => {
@@ -116,6 +123,16 @@ const MainApp: React.FC = () => {
         onPremium={premium && (premium.available || premium.active) ? () => setPage('premium') : undefined}
         premiumActive={premium?.active} />
       <main className="container mx-auto px-4 py-6 sm:py-8">
+        {isAdmin && (settingsFailed || missingMigrations.length > 0) && (
+          <div role="alert" className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-extrabold">⚠️ Atenção, administrador</p>
+            <p>
+              {settingsFailed
+                ? 'Não foi possível carregar as configurações do app. Confira se as migrações do banco foram aplicadas e veja os logs da Vercel.'
+                : <>Faltam migrações no banco: <strong>{missingMigrations.join(', ')}</strong>. Os recursos que dependem delas (anúncios, Premium, limite de partidas) ficam desligados até você rodá-las no Neon, em ordem, e recarregar.</>}
+            </p>
+          </div>
+        )}
         {Game && isEnabled(page) ? (
           <Game key={page} onBack={home} />
         ) : page === 'ranking' ? (

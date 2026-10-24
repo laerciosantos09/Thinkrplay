@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { GAMES, TIER_LABELS } from '../config';
 import { fetchProgress } from '../services/api';
 import AdSlot from '../components/ads/AdSlot';
-import EnergyBadge from '../components/energy/EnergyBadge';
 import { CHALLENGES_PER_TIER, TIERS, TierProgress, emptyProgress, isTierUnlocked, unlockStatus } from '../lib/tiers';
 
 interface DashboardProps {
@@ -25,7 +24,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectGame, onGoToRanking, isEn
     <header className="mb-10 text-center">
       <h1 className="text-3xl md:text-5xl font-extrabold text-ink-900 mb-3">Qual <span className="text-gradient">desafio</span> hoje?</h1>
       <p className="text-slate-500 text-lg mb-6">Escolha um jogo de raciocínio e suba no ranking.</p>
-      <EnergyBadge className="mb-5" />
       <button
         onClick={onGoToRanking}
         className="inline-flex items-center gap-2 bg-brand-50 text-brand-700 px-6 py-3 rounded-full font-black text-sm hover:bg-brand-100 transition-colors border border-brand-200"

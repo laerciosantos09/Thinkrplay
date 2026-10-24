@@ -79,6 +79,7 @@ export interface AppSettings {
   ads: { enabled: boolean };
   premium: PremiumState;
   energy: EnergySettings;
+  setup?: { missingMigrations: string[] }; // só para administradores: migrações do banco que faltam
 }
 export const fetchSettings = () => request<AppSettings>('settings');
 export const setGameEnabled = (game: string, enabled: boolean) => request<AppSettings>('settings', { body: { game, enabled } });

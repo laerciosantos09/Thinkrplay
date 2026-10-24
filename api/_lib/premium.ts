@@ -1,4 +1,4 @@
-import { sql } from './db.js';
+import { orIfMissing, sql } from './db.js';
 import { isAppSettingEnabled } from './games.js';
 import type { Session } from './http.js';
 import { stripeConfigured } from './stripe.js';
@@ -6,7 +6,8 @@ import { stripeConfigured } from './stripe.js';
 // Assinatura que dá direito aos benefícios.
 export const ACTIVE_STATUSES = ['active', 'trialing'];
 
-export const getSubscription = async (userId: string) => (await sql`SELECT * FROM subscriptions WHERE user_id = ${userId}`)[0];
+export const getSubscription = async (userId: string) =>
+  (await orIfMissing(() => sql`SELECT * FROM subscriptions WHERE user_id = ${userId}`, [] as Record<string, any>[]))[0];
 
 export const isSubscriptionActive = (row?: { status?: string } | null) => Boolean(row && ACTIVE_STATUSES.includes(row.status ?? ''));
 
@@ -22,6 +23,6 @@ export const premiumState = async (session: Session) => {
     cancelAtPeriodEnd: Boolean(sub?.cancel_at_period_end),
   };
   if (session.role !== 'admin') return state;
-  const count = await sql`SELECT count(*)::int AS n FROM subscriptions WHERE status = ANY(${ACTIVE_STATUSES})`;
+  const count = await orIfMissing(() => sql`SELECT count(*)::int AS n FROM subscriptions WHERE status = ANY(${ACTIVE_STATUSES})`, [{ n: 0 }] as Record<string, any>[]);
   return { ...state, enabled, configured, subscribers: count[0].n as number };
 };

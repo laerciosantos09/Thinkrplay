@@ -1,4 +1,4 @@
-import { HttpError, sql } from './_lib/db.js';
+import { HttpError, orIfMissing, sql } from './_lib/db.js';
 import { GAME_SLUGS, optionalSession, route } from './_lib/http.js';
 
 const PERIODS = { daily: 'day', weekly: 'week', monthly: 'month', yearly: 'year' } as const;
@@ -28,16 +28,25 @@ export default route(['GET'], async (req) => {
           FROM agg
         )
         SELECT r.position::int AS position, u.username, r.score, r.solved, r.last_at AS date,
-               (r.user_id = ${me}::uuid) IS TRUE AS is_me,
-               EXISTS (SELECT 1 FROM subscriptions sb WHERE sb.user_id = r.user_id AND sb.status IN ('active', 'trialing')) AS premium
+               r.user_id, (r.user_id = ${me}::uuid) IS TRUE AS is_me
         FROM ranked r JOIN users u ON u.id = r.user_id
         WHERE r.position <= ${TOP} OR r.user_id = ${me}::uuid
         ORDER BY r.position`;
-      return [
-        period,
-        rows.map((r) => ({ position: r.position, username: r.username, score: r.score, solved: r.solved, date: r.date, isMe: r.is_me, premium: r.premium })),
-      ] as const;
+      return [period, rows] as const;
     }),
   );
-  return Object.fromEntries(entries);
+
+  // Selo Premium: consulta à parte, assim a falta da tabela de assinaturas (migração 006 pendente) não derruba o ranking.
+  const ids = [...new Set(entries.flatMap(([, rows]) => rows.map((r) => r.user_id as string)))];
+  const premiumRows = ids.length
+    ? await orIfMissing(() => sql`SELECT user_id FROM subscriptions WHERE user_id = ANY(${ids}::uuid[]) AND status IN ('active', 'trialing')`, [] as Record<string, any>[])
+    : [];
+  const premium = new Set(premiumRows.map((r) => r.user_id as string));
+
+  return Object.fromEntries(
+    entries.map(([period, rows]) => [
+      period,
+      rows.map((r) => ({ position: r.position, username: r.username, score: r.score, solved: r.solved, date: r.date, isMe: r.is_me, premium: premium.has(r.user_id) })),
+    ]),
+  );
 });
