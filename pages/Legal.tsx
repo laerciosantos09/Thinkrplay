@@ -1,51 +1,53 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Logo from '../components/Logo';
 import { LegalDocument, PRIVACY, TERMS } from '../content/legal';
 
 // Página pública (não exige login): é a URL que as lojas de apps pedem para a política de privacidade.
-const LegalPage: React.FC<{ doc: LegalDocument }> = ({ doc }) => (
-  <div className="min-h-screen bg-brand-50/40">
-    <header className="bg-ink-900 text-white">
-      <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-        <a href="/" aria-label="Ir para o início"><Logo size={32} /></a>
-        <a href="/" className="text-sm font-bold text-slate-300 hover:text-white">Voltar ao app &rarr;</a>
-      </div>
-    </header>
+const LegalPage: React.FC<{ doc: LegalDocument }> = ({ doc }) => {
+  useEffect(() => {
+    document.title = `${doc.title} - Thinkrplay`;
+  }, [doc.title]);
 
-    <main className="container mx-auto px-4 py-8 max-w-3xl">
-      <nav className="flex gap-2 mb-6" aria-label="Documentos legais">
-        {[TERMS, PRIVACY].map((d) => (
-          <a
-            key={d.path} href={d.path} aria-current={d.path === doc.path ? 'page' : undefined}
-            className={`px-4 py-2 rounded-full text-sm font-bold ${d.path === doc.path ? 'bg-brand-600 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-          >
-            {d.title}
+  const back = (e: React.MouseEvent) => {
+    // volta para onde a pessoa estava (ex.: o cadastro); sem histórico, vai ao início
+    if (window.history.length > 1 && document.referrer.startsWith(window.location.origin)) {
+      e.preventDefault();
+      window.history.back();
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-white px-4 py-10">
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-6">
+          <a href="/" onClick={back} className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-brand-600 transition-colors">
+            <span aria-hidden="true">&lsaquo;</span> Voltar
           </a>
-        ))}
-      </nav>
+        </div>
+        <div className="flex justify-center mb-8">
+          <Logo tone="light" size={36} />
+        </div>
 
-      <article className="bg-white rounded-3xl border border-slate-100 shadow-sm p-6 sm:p-10">
-        <h1 className="text-3xl font-extrabold text-ink-900 mb-3">{doc.title}</h1>
-        <p className="text-slate-500 mb-8">{doc.intro}</p>
-        <div className="space-y-7">
-          {doc.sections.map((section, i) => (
+        <h1 className="text-2xl font-bold mb-2">{doc.title}</h1>
+        <p className="text-sm text-slate-500 mb-8">Última atualização: {doc.updated}</p>
+
+        <div className="space-y-6">
+          {doc.sections.map((section) => (
             <section key={section.title}>
-              <h2 className="text-lg font-extrabold text-ink-800 mb-2">{i + 1}. {section.title}</h2>
-              {section.paragraphs?.map((p) => <p key={p} className="text-slate-600 leading-relaxed mb-2">{p}</p>)}
-              {section.items && (
-                <ul className="list-disc pl-5 space-y-1.5 text-slate-600 leading-relaxed mb-2">
-                  {section.items.map((item) => <li key={item}>{item}</li>)}
-                </ul>
-              )}
-              {section.after?.map((p) => <p key={p} className="text-slate-600 leading-relaxed mb-2">{p}</p>)}
+              <h2 className="text-base font-semibold mb-2">{section.title}</h2>
+              <p className="text-sm text-slate-700 leading-relaxed">{section.text}</p>
             </section>
           ))}
         </div>
-      </article>
-    </main>
-  </div>
-);
 
-export const LEGAL_ROUTES: Record<string, LegalDocument> = { '/termos': TERMS, '/privacidade': PRIVACY };
+        <div className="mt-10 pt-6 border-t border-slate-100 text-center">
+          <a href={doc.otherPath} className="text-sm text-brand-600 hover:underline">{doc.otherLabel}</a>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export const LEGAL_ROUTES: Record<string, LegalDocument> = { [TERMS.path]: TERMS, [PRIVACY.path]: PRIVACY };
 
 export default LegalPage;

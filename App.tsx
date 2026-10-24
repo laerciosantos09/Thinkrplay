@@ -12,6 +12,7 @@ import AdminSettings from './pages/AdminSettings';
 import Profile from './pages/Profile';
 import LegalPage, { LEGAL_ROUTES } from './pages/Legal';
 import TermsGate from './components/TermsGate';
+import { SUPPORT_EMAIL } from './config';
 import Navbar from './components/Navbar';
 import { GameSetting, User } from './types';
 import { fetchGames, fetchProfile, logout as apiLogout, setUnauthorizedHandler } from './services/api';
@@ -100,6 +101,7 @@ const MainApp: React.FC = () => {
       </main>
       <footer className="container mx-auto px-4 pb-8 text-center text-xs text-slate-400">
         <a href="/termos" className="hover:underline">Termos de Uso</a> · <a href="/privacidade" className="hover:underline">Política de Privacidade</a>
+        {SUPPORT_EMAIL && <> · <a href={`mailto:${SUPPORT_EMAIL}`} className="hover:underline">Suporte</a></>}
       </footer>
     </div>
   );

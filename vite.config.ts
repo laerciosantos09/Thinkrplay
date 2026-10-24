@@ -6,8 +6,8 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
-  if (mode === 'production' && (!env.VITE_LEGAL_CONTROLLER || !env.VITE_LEGAL_CONTACT_EMAIL)) {
-    console.warn('\n[thinkrplay] ATENÇÃO: defina VITE_LEGAL_CONTROLLER e VITE_LEGAL_CONTACT_EMAIL. Sem eles, os Termos e a Política de Privacidade mostram um aviso no lugar do responsável e do e-mail de contato.\n');
+  if (mode === 'production' && !env.VITE_SUPPORT_EMAIL) {
+    console.warn('\n[thinkrplay] Aviso: defina VITE_SUPPORT_EMAIL (e-mail de suporte). Os Termos e a Política de Privacidade mandam o usuário falar com o "e-mail de suporte disponível na plataforma".\n');
   }
   return {
   server: {

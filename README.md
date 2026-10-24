@@ -43,8 +43,8 @@ Cada jogo tem 3 níveis (**Easy**, **Medium**, **Hard**) com **500 desafios** ca
 
 - **Perfil** (clique no seu nome no menu): trocar o **nome de usuário** (único, sem diferenciar maiúsculas, diferente do e-mail, que nunca aparece para outros), **alterar a senha** (pede a atual e desconecta os outros dispositivos) e **excluir a conta** (pede a senha e a palavra EXCLUIR; apaga cadastro, pontuações, partidas e progresso, e libera e-mail e nome). O último administrador não pode se excluir.
 - **Termos de Uso** (`/termos`) e **Política de Privacidade** (`/privacidade`, LGPD): páginas públicas, sem login — use a URL da privacidade na ficha das lojas de apps. O cadastro exige aceite, que é registrado com a versão (`LEGAL_VERSION` em `lib/legal.ts`). Ao mudar o texto de forma relevante, altere essa versão e todos veem a tela de aceite de novo.
-- Os textos estão em `content/legal.ts`. **São um modelo e devem ser revisados por um advogado** antes de publicar.
-- Defina no build da Vercel (Environment Variables) o responsável e o contato que aparecem nos documentos: `VITE_LEGAL_CONTROLLER` (nome ou razão social e CPF/CNPJ) e `VITE_LEGAL_CONTACT_EMAIL`. O build avisa se faltarem.
+- Seguem o mesmo formato do lilivro: página enxuta com "Última atualização", seções numeradas, link para o outro documento e uma tela "Quase lá!" para aceitar. Os textos estão em `content/legal.ts`. **São um modelo e devem ser revisados por um advogado** antes de publicar.
+- O contato nos documentos é "o e-mail de suporte disponível na plataforma". Defina `VITE_SUPPORT_EMAIL` na Vercel (Environment Variables, valor público) para que esse e-mail apareça no Perfil, no rodapé e nos documentos. O build avisa se faltar.
 - A sessão é invalidada na hora ao trocar/redefinir a senha ou excluir a conta (o servidor confere o usuário no banco a cada chamada).
 
 ## Rankings
