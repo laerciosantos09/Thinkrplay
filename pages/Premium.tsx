@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { PremiumState, openBillingPortal, startCheckout } from '../services/api';
+import { EnergySettings, PremiumState, openBillingPortal, startCheckout } from '../services/api';
 import { PREMIUM_PRICE_LABEL } from '../config';
 
 interface PremiumProps {
   premium: PremiumState;
+  energy: EnergySettings | null;
   justPaid: boolean; // voltou do pagamento: aguarda a confirmação (webhook) e atualiza sozinho
   onRefresh: () => Promise<void>;
   onBack: () => void;
@@ -17,7 +18,7 @@ const BENEFITS = [
 
 const formatDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('pt-BR') : null);
 
-const Premium: React.FC<PremiumProps> = ({ premium, justPaid, onRefresh, onBack }) => {
+const Premium: React.FC<PremiumProps> = ({ premium, energy, justPaid, onRefresh, onBack }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -76,6 +77,18 @@ const Premium: React.FC<PremiumProps> = ({ premium, justPaid, onRefresh, onBack 
       ) : premium.available ? (
         <section className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
           <ul className="space-y-4 mb-6">
+            {energy?.enabled && (
+              <li className="flex items-start gap-3">
+                <span className="text-2xl" aria-hidden="true">⚡</span>
+                <div>
+                  <p className="font-extrabold text-ink-800">Mais partidas, recarga mais rápida</p>
+                  <p className="text-sm text-slate-500">
+                    {energy.premium.capacity} partidas em sequência e +1 a cada {Math.round(energy.premium.intervalSec / 60)} min
+                    (no plano grátis: {energy.free.capacity} e +1 a cada {Math.round(energy.free.intervalSec / 60)} min).
+                  </p>
+                </div>
+              </li>
+            )}
             {BENEFITS.map(([icon, title, text]) => (
               <li key={title} className="flex items-start gap-3">
                 <span className="text-2xl" aria-hidden="true">{icon}</span>
@@ -84,7 +97,7 @@ const Premium: React.FC<PremiumProps> = ({ premium, justPaid, onRefresh, onBack 
             ))}
           </ul>
           <p className="text-sm text-slate-500 bg-slate-50 rounded-xl px-4 py-3 mb-5">
-            O Premium <strong>não dá pontos extras</strong>: os rankings continuam iguais e justos para todos.
+            O Premium <strong>não dá pontos extras</strong>: cada desafio vale os mesmos pontos para todos.
           </p>
           {PREMIUM_PRICE_LABEL && <p className="text-3xl font-extrabold text-ink-900 mb-4">{PREMIUM_PRICE_LABEL}</p>}
           <button onClick={() => go(startCheckout)} disabled={busy}

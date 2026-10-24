@@ -7,7 +7,7 @@ export const setUnauthorizedHandler = (fn: () => void) => {
 };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public data: Record<string, any> = {}) {
     super(message);
   }
 }
@@ -28,7 +28,7 @@ const request = async <T,>(path: string, init: { method?: string; body?: unknown
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith('auth/')) onUnauthorized();
-    throw new ApiError(res.status, data.error ?? 'Algo deu errado.');
+    throw new ApiError(res.status, data.error ?? 'Algo deu errado.', data);
   }
   return data as T;
 };
@@ -62,14 +62,28 @@ export interface PremiumState {
   configured?: boolean;
   subscribers?: number;
 }
+// Limite de partidas em sequência ("energia"): estoque que recarrega com o tempo.
+export interface EnergyPlan { capacity: number; intervalSec: number }
+export interface EnergyState extends EnergyPlan {
+  charges: number; // partidas disponíveis agora
+  nextRefillAt: string | null; // quando volta a próxima (null = estoque cheio)
+}
+export interface EnergySettings {
+  enabled: boolean;
+  free: EnergyPlan;
+  premium: EnergyPlan;
+  state: EnergyState | null; // deste usuário (só quando o limite está ligado)
+}
 export interface AppSettings {
   games: GameSetting[];
   ads: { enabled: boolean };
   premium: PremiumState;
+  energy: EnergySettings;
 }
 export const fetchSettings = () => request<AppSettings>('settings');
 export const setGameEnabled = (game: string, enabled: boolean) => request<AppSettings>('settings', { body: { game, enabled } });
 export const setAdsEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'ads', enabled } });
+export const setEnergyEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'energy', enabled } });
 export const setPremiumEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'premium', enabled } });
 
 // Premium: abre o pagamento / o portal de assinatura do Stripe (devolvem a URL para redirecionar).
@@ -85,6 +99,7 @@ export interface StartedPlay {
   tier: Tier;
   challenge: number;
   scored: boolean; // false = desafio já resolvido antes (repetição não pontua)
+  energy?: EnergyState | null; // estoque de partidas depois de gastar esta (se o limite estiver ligado)
   seed?: number;
   puzzles?: { shown: number[]; options: number[]; hint: string }[];
 }

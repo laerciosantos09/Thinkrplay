@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import RankingTable from './RankingTable';
 import UnlockInfo from './UnlockInfo';
 import AdSlot from './ads/AdSlot';
+import EnergyBadge from './energy/EnergyBadge';
+import { formatCountdown, useEnergy } from './energy/EnergyContext';
 import { TIER_LABELS } from '../config';
 import { CHALLENGES_PER_TIER, TIERS, Tier, UNLOCK_RULES, isTierUnlocked, nextLockedTier, unlockStatus } from '../lib/tiers';
 import { PlayCtl } from '../services/usePlay';
@@ -51,6 +53,44 @@ const ChallengePicker: React.FC<{ ctl: PlayCtl }> = ({ ctl }) => {
   );
 };
 
+// Antes de jogar: mostra o desafio escolhido e o botão "Jogar". É aqui (e nos botões "Próximo"/"Repetir") que se gasta 1 partida.
+const StartCard: React.FC<{ ctl: PlayCtl }> = ({ ctl }) => {
+  const { energy, onPremium } = useEnergy();
+  const state = energy?.enabled ? energy.state : null;
+  const [now, setNow] = useState(() => Date.now());
+  const next = state?.nextRefillAt ? new Date(state.nextRefillAt).getTime() : null;
+  useEffect(() => {
+    if (next === null) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [next]);
+
+  const empty = state !== null && state.charges === 0;
+  return (
+    <div className="text-center py-10 sm:py-14">
+      <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">{TIER_LABELS[ctl.tier]}</p>
+      <p className="text-3xl font-extrabold text-ink-900 mb-6">Desafio {ctl.challenge}</p>
+      <button
+        onClick={ctl.begin} disabled={ctl.starting || empty}
+        className="bg-brand-600 hover:bg-brand-700 disabled:opacity-40 text-white px-10 py-4 rounded-2xl text-lg font-black shadow-lg"
+      >
+        {ctl.starting ? 'Preparando...' : 'Jogar'}{state && !ctl.starting && <span className="ml-2 text-sm font-bold opacity-80">gasta 1 ⚡</span>}
+      </button>
+      {empty && (
+        <div className="mt-5 max-w-sm mx-auto rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900">
+          <p className="font-extrabold">Você usou todas as partidas por agora.</p>
+          {next !== null && <p>Próxima partida em <strong>{formatCountdown(next - now)}</strong>.</p>}
+          {onPremium && energy && (
+            <button onClick={onPremium} className="mt-2 font-black text-brand-700 underline">
+              ⭐ Premium: {energy.premium.capacity} partidas e recarga a cada {Math.round(energy.premium.intervalSec / 60)} min
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const GameShell: React.FC<GameShellProps> = ({ title, slug, ctl, onBack, stats, children }) => (
   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
     <div className="lg:col-span-2 bg-white p-4 sm:p-6 rounded-3xl shadow-sm border border-slate-100">
@@ -60,7 +100,7 @@ const GameShell: React.FC<GameShellProps> = ({ title, slug, ctl, onBack, stats, 
           <h2 className="text-2xl font-black text-ink-800">{title}</h2>
           {stats && <div className="text-xs text-slate-400 font-bold uppercase tracking-widest">{stats}</div>}
         </div>
-        <span className="w-16" />
+        <EnergyBadge />
       </div>
 
       <div role="tablist" aria-label="Nível" className="grid grid-cols-3 gap-2 mb-3">
@@ -96,10 +136,10 @@ const GameShell: React.FC<GameShellProps> = ({ title, slug, ctl, onBack, stats, 
       {ctl.error && (
         <div role="alert" className="mb-4 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-sm font-bold">
           {ctl.error}
-          <button onClick={ctl.restart} className="ml-3 underline">Nova partida</button>
+          <button onClick={ctl.begin} className="ml-3 underline">Tentar de novo</button>
         </div>
       )}
-      {ctl.play ? children : !ctl.error && <p className="text-center text-slate-400 py-16">Preparando partida...</p>}
+      {ctl.play ? children : ctl.idle || ctl.error ? <StartCard ctl={ctl} /> : <p className="text-center text-slate-400 py-16">Preparando partida...</p>}
     </div>
     <RankingTable slug={slug} refreshKey={ctl.rankingKey} />
   </div>
@@ -138,7 +178,7 @@ export const WinPanel: React.FC<{ title: string; text: string; ctl: PlayCtl }> =
       <div className="flex gap-3 justify-center mt-3">
         <button onClick={ctl.restart} className="bg-white text-green-700 border border-green-300 px-6 py-2 rounded-full font-bold">Repetir</button>
         {ctl.challenge < ctl.nextChallenge && (
-          <button onClick={() => ctl.setChallenge(ctl.challenge + 1)} className="bg-green-600 text-white px-8 py-2 rounded-full font-bold shadow-lg hover:bg-green-700">
+          <button onClick={() => ctl.setChallenge(ctl.challenge + 1, { play: true })} className="bg-green-600 text-white px-8 py-2 rounded-full font-bold shadow-lg hover:bg-green-700">
             Próximo desafio
           </button>
         )}

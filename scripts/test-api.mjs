@@ -21,7 +21,7 @@ globalThis.__pg = pg;
 
 const shim = `export const sql = (...a) => globalThis.__sql(...a);
 export const assertDb = () => {};
-export class HttpError extends Error { constructor(status, message, expose = false) { super(message); this.status = status; this.expose = expose; } }`;
+export class HttpError extends Error { constructor(status, message, expose = false, extra) { super(message); this.status = status; this.expose = expose; this.extra = extra; } }`;
 writeFileSync(path.join(out, 'db-shim.js'), shim);
 
 const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'billing', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings'];
@@ -594,6 +594,83 @@ process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
 // logout agora é uma ação do perfil
 cookie = pamCookie; const loggedOut = await call('profile', { body: { action: 'logout' } });
 assert.equal(loggedOut.statusCode, 200); assert.match(loggedOut.headers['Set-Cookie'], /Max-Age=0/);
+
+// ===================== Limite de partidas em sequência (energia) =====================
+cookie = ''; await ok('auth/register', reg2({ username: 'eva', email: 'eva@x.com', password: 'senha-forte-8' }));
+const evaCookie = cookie;
+const evaId = (await pg.query(`SELECT id FROM users WHERE username='eva'`)).rows[0].id;
+const startSudoku = () => call('play/start', { body: { game: 'sudoku', tier: 'easy', challenge: 1 } });
+const energyOf = async () => (await ok('settings', { method: 'GET' })).energy;
+const minutesUntil = (iso) => (new Date(iso).getTime() - Date.now()) / 60000;
+
+// desligado por padrão: sem limite e sem estado de energia
+let en = await energyOf();
+assert.deepEqual([en.enabled, en.state], [false, null]);
+assert.deepEqual(en.free, { capacity: 20, intervalSec: 600 }); assert.deepEqual(en.premium, { capacity: 50, intervalSec: 120 });
+for (let i = 0; i < 25; i++) { const r = await startSudoku(); assert.equal(r.statusCode, 200); assert.equal(r.body.energy, null); }
+assert.equal((await pg.query(`SELECT count(*)::int n FROM play_energy WHERE user_id=$1`, [evaId])).rows[0].n, 0, 'desligado não registra nada');
+assert.equal(await code('settings', { body: { setting: 'energy', enabled: true } }), 403, 'usuário comum não liga');
+
+// ligado: 20 partidas, depois bloqueia
+cookie = adminC; await pg.query(`UPDATE users SET role='admin' WHERE username='ana'`);
+assert.equal((await flag('energy', true)).energy.enabled, true);
+cookie = evaCookie;
+en = await energyOf(); assert.deepEqual([en.enabled, en.state.charges, en.state.capacity, en.state.nextRefillAt], [true, 20, 20, null], 'estoque cheio ao começar');
+for (let i = 1; i <= 20; i++) { const r = await startSudoku(); assert.equal(r.statusCode, 200, `partida ${i}`); assert.equal(r.body.energy.charges, 20 - i); }
+const blocked = await startSudoku();
+assert.equal(blocked.statusCode, 429); assert.match(blocked.body.error, /sem partidas/);
+assert.equal(blocked.body.energy.charges, 0);
+const wait = minutesUntil(blocked.body.energy.nextRefillAt);
+assert.ok(wait > 9 && wait <= 10.05, `próxima partida em ~10 min (deu ${wait.toFixed(2)})`);
+assert.equal((await energyOf()).state.charges, 0);
+assert.equal((await pg.query(`SELECT count(*)::int n FROM plays WHERE user_id=$1`, [evaId])).rows[0].n, 45, 'partida bloqueada não é criada (25 + 20)');
+
+// recarga: 25 min = +2 partidas, e os 5 min restantes continuam contando
+await pg.query(`UPDATE play_energy SET refilled_at = now() - interval '25 minutes' WHERE user_id=$1`, [evaId]);
+en = await energyOf(); assert.equal(en.state.charges, 2);
+assert.ok(Math.abs(minutesUntil(en.state.nextRefillAt) - 5) < 0.5, 'o tempo parcial até a próxima recarga é preservado');
+assert.equal((await startSudoku()).body.energy.charges, 1); assert.equal((await startSudoku()).body.energy.charges, 0);
+assert.equal((await startSudoku()).statusCode, 429);
+const after = minutesUntil((await energyOf()).state.nextRefillAt);
+assert.ok(after > 4 && after < 6, `ao gastar, o relógio não zera (próxima em ${after.toFixed(2)} min)`);
+
+// atomicidade: com 1 partida sobrando, 3 inícios simultâneos gastam só uma
+await pg.query(`UPDATE play_energy SET charges = 1, refilled_at = now() WHERE user_id=$1`, [evaId]);
+const race = await Promise.all([startSudoku(), startSudoku(), startSudoku()]);
+assert.equal(race.filter((r) => r.statusCode === 200).length, 1, `corrida: ${race.map((r) => r.statusCode)}`);
+
+// o estoque não passa do máximo, mesmo com muito tempo parado
+await pg.query(`UPDATE play_energy SET charges = 0, refilled_at = now() - interval '10 hours' WHERE user_id=$1`, [evaId]);
+en = await energyOf(); assert.deepEqual([en.state.charges, en.state.nextRefillAt], [20, null]);
+assert.equal((await startSudoku()).body.energy.charges, 19);
+
+// Premium: 50 partidas e +1 a cada 2 min
+await pg.query(`INSERT INTO subscriptions (user_id, stripe_customer_id, status) VALUES ($1,'cus_eva','active')`, [evaId]);
+await pg.query(`UPDATE play_energy SET refilled_at = now() - interval '10 minutes' WHERE user_id=$1`, [evaId]);
+en = await energyOf(); assert.deepEqual([en.state.capacity, en.state.intervalSec, en.state.charges], [50, 120, 24], '19 + 10 min / 2 min = 24');
+cookie = ''; await ok('auth/register', reg2({ username: 'fox', email: 'fox@x.com', password: 'senha-forte-9' }));
+const foxCookie = cookie; const foxId = (await pg.query(`SELECT id FROM users WHERE username='fox'`)).rows[0].id;
+await pg.query(`INSERT INTO subscriptions (user_id, stripe_customer_id, status) VALUES ($1,'cus_fox','trialing')`, [foxId]);
+for (let i = 1; i <= 50; i++) assert.equal((await startSudoku()).statusCode, 200, `premium partida ${i}`);
+const foxBlocked = await startSudoku(); assert.equal(foxBlocked.statusCode, 429);
+assert.ok(minutesUntil(foxBlocked.body.energy.nextRefillAt) <= 2.05, 'Premium recarrega em 2 min');
+await pg.query(`UPDATE play_energy SET refilled_at = now() - interval '4 minutes' WHERE user_id=$1`, [foxId]);
+assert.equal((await energyOf()).state.charges, 2);
+// perdeu o Premium: volta para o limite do plano grátis
+await pg.query(`UPDATE subscriptions SET status='canceled' WHERE user_id=$1`, [foxId]);
+await pg.query(`UPDATE play_energy SET charges = 40, refilled_at = now() WHERE user_id=$1`, [foxId]);
+en = await energyOf(); assert.equal(en.state.capacity, 20);
+assert.equal((await startSudoku()).body.energy.charges, 19, 'excesso acima do plano grátis é cortado');
+
+// admin desliga o limite: volta a ser ilimitado
+cookie = adminC; assert.equal((await flag('energy', false)).energy.enabled, false);
+cookie = evaCookie;
+await pg.query(`UPDATE play_energy SET charges = 0 WHERE user_id=$1`, [evaId]);
+for (let i = 0; i < 3; i++) { const r = await startSudoku(); assert.equal(r.statusCode, 200); assert.equal(r.body.energy, null); }
+// excluir a conta apaga a energia
+await pg.query(`DELETE FROM auth_attempts`);
+assert.equal(await code('profile', { body: { action: 'delete', password: 'senha-forte-8', confirm: 'EXCLUIR' } }), 200);
+assert.equal((await pg.query(`SELECT count(*)::int n FROM play_energy WHERE user_id=$1`, [evaId])).rows[0].n, 0);
 
 console.log('API OK');
 process.exit(0);

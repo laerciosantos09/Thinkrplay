@@ -53,6 +53,20 @@ Cada jogo tem 3 níveis (**Easy**, **Medium**, **Hard**) com **500 desafios** ca
 - São calculados no servidor a cada consulta a partir das pontuações: cada desafio concluído entra no ranking imediatamente. A tela atualiza sozinha a cada 20 s enquanto está aberta (e na hora, quando é você quem conclui).
 - Mostram o top 10 e, para quem está logado, a própria posição mesmo fora do top 10.
 
+## Limite de partidas ("energia")
+
+Opcional e **desligado por padrão** (Configurações → Limite de partidas). Ligado, cada pessoa tem um estoque de partidas que **gasta 1 ao iniciar uma partida** e recarrega com o tempo:
+
+| | Máximo em sequência | Recarga |
+| --- | --- | --- |
+| Grátis | 20 partidas | +1 a cada 10 min |
+| Premium | 50 partidas | +1 a cada 2 min |
+
+- Só **iniciar** gasta: botão **Jogar**, **Próximo desafio** e **Repetir**. Navegar entre desafios e níveis não gasta. Sem partidas, o botão Jogar fica bloqueado com a contagem regressiva e a oferta do Premium.
+- O estoque é calculado e gasto **no servidor** de forma atômica (não dá para burlar abrindo várias abas), e o tempo parcial até a próxima recarga é preservado.
+- Os números ficam em `lib/energy.ts`. Ao perder o Premium, o estoque volta ao limite do plano grátis.
+- **Atenção ao ranking:** o ranking soma pontos, então quem pode jogar mais partidas por hora (Premium) tem vantagem de volume na competição.
+
 ## Plano Premium (Stripe)
 
 Assinatura **mensal** que **remove os anúncios** e mostra o **selo ⭐** no perfil e nos rankings. **Não dá pontos extras** (os rankings seguem iguais para todos). Fica **desligado por padrão**; o administrador liga em **Configurações → Plano Premium**.

@@ -110,7 +110,7 @@ export const route = (methods: string[], handler: Handler) =>
       res.status(200).json(body);
     } catch (err) {
       if (err instanceof HttpError && (err.status < 500 || err.expose)) {
-        res.status(err.status).json({ error: err.message });
+        res.status(err.status).json({ error: err.message, ...(err.extra ?? {}) });
       } else {
         // Detalhes de configuração/infraestrutura ficam só no log do servidor, nunca na resposta.
         console.error(err instanceof HttpError ? err.message : err);

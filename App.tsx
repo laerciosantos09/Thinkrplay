@@ -16,9 +16,10 @@ import TermsGate from './components/TermsGate';
 import { SUPPORT_EMAIL } from './config';
 import { AdsProvider } from './components/ads/AdsContext';
 import ConsentBanner from './components/ads/ConsentBanner';
+import { EnergyProvider } from './components/energy/EnergyContext';
 import Navbar from './components/Navbar';
 import { GameSetting, User } from './types';
-import { AppSettings, PremiumState, fetchProfile, fetchSettings, logout as apiLogout, setUnauthorizedHandler } from './services/api';
+import { AppSettings, EnergySettings, EnergyState, PremiumState, fetchProfile, fetchSettings, logout as apiLogout, setUnauthorizedHandler } from './services/api';
 
 const GAME_PAGES: Record<string, React.FC<{ onBack: () => void }>> = {
   sudoku: SudokuGame,
@@ -36,6 +37,7 @@ const MainApp: React.FC = () => {
   const [games, setGames] = useState<GameSetting[] | null>(null);
   const [adsEnabled, setAdsEnabled] = useState(false);
   const [premium, setPremium] = useState<PremiumState | null>(null);
+  const [energy, setEnergyConfig] = useState<EnergySettings | null>(null);
   // Voltou do pagamento do Stripe (?premium=success): abre a tela do Premium aguardando a confirmação.
   const [justPaid, setJustPaid] = useState(() => new URLSearchParams(window.location.search).get('premium') === 'success');
 
@@ -64,7 +66,10 @@ const MainApp: React.FC = () => {
     setGames(r.games);
     setAdsEnabled(r.ads.enabled);
     setPremium(r.premium);
+    setEnergyConfig(r.energy);
   }, []);
+
+  const setEnergyState = useCallback((state: EnergyState) => setEnergyConfig((e) => (e ? { ...e, state } : e)), []);
 
   const refreshSettings = useCallback(() => fetchSettings().then(applySettings), [applySettings]);
 
@@ -103,6 +108,8 @@ const MainApp: React.FC = () => {
 
   return (
     <AdsProvider enabled={adsEnabled && !premium?.active}>
+    <EnergyProvider energy={energy} setState={setEnergyState} refresh={refreshSettings}
+      onPremium={premium?.available && !premium.active ? () => setPage('premium') : undefined}>
     <div className="min-h-screen bg-slate-50">
       <Navbar user={user} onLogout={logout} onHome={home} onRanking={() => setPage('ranking')} onProfile={() => setPage('profile')}
         onSettings={isAdmin ? () => setPage('settings') : undefined}
@@ -116,9 +123,9 @@ const MainApp: React.FC = () => {
         ) : page === 'profile' ? (
           <Profile user={user} premium={premium} onPremium={() => setPage('premium')} onUserChange={setUser} onDeleted={clear} onBack={home} />
         ) : page === 'premium' && premium ? (
-          <Premium premium={premium} justPaid={justPaid} onRefresh={refreshSettings} onBack={() => { setJustPaid(false); home(); }} />
+          <Premium premium={premium} energy={energy} justPaid={justPaid} onRefresh={refreshSettings} onBack={() => { setJustPaid(false); home(); }} />
         ) : page === 'settings' && isAdmin ? (
-          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} premium={premium} onChange={applySettings} onBack={home} />
+          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} premium={premium} energy={energy} onChange={applySettings} onBack={home} />
         ) : (
           <Dashboard onSelectGame={setPage} onGoToRanking={() => setPage('ranking')} isEnabled={isEnabled} loading={games === null} />
         )}
@@ -129,6 +136,7 @@ const MainApp: React.FC = () => {
       </footer>
       <ConsentBanner />
     </div>
+    </EnergyProvider>
     </AdsProvider>
   );
 };

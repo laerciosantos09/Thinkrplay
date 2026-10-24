@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { ADS, AdPlacement, GAMES } from '../config';
-import { AppSettings, PremiumState, setAdsEnabled, setGameEnabled, setPremiumEnabled } from '../services/api';
+import { AppSettings, EnergySettings, PremiumState, setAdsEnabled, setEnergyEnabled, setGameEnabled, setPremiumEnabled } from '../services/api';
 import { GameSetting } from '../types';
 
 interface AdminSettingsProps {
   games: GameSetting[];
   adsEnabled: boolean;
   premium: PremiumState | null;
+  energy: EnergySettings | null;
   onChange: (settings: AppSettings) => void;
   onBack: () => void;
 }
@@ -29,7 +30,7 @@ const PLACEMENTS: { key: AdPlacement; label: string; variable: string }[] = [
   { key: 'result', label: 'Depois de concluir um desafio', variable: 'VITE_ADSENSE_SLOT_RESULT' },
 ];
 
-const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premium, onChange, onBack }) => {
+const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premium, energy, onChange, onBack }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const state = new Map(games.map((g) => [g.slug, g]));
@@ -153,6 +154,33 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premiu
             Alterar variáveis exige um novo deploy na Vercel. O interruptor acima vale na hora, sem deploy.
           </p>
         </div>
+      </section>
+
+      <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        <header className="p-6 border-b border-slate-100">
+          <h2 className="text-xl font-extrabold text-ink-800">Limite de partidas</h2>
+          <p className="text-sm text-slate-500">Cada partida iniciada gasta 1 ⚡; o estoque recarrega com o tempo. Desligado por padrão.</p>
+        </header>
+        <div className="flex items-center gap-4 p-5">
+          <div className="flex-1 min-w-0">
+            <p className={`font-extrabold ${energy?.enabled ? 'text-ink-800' : 'text-slate-400'}`}>Limitar partidas em sequência</p>
+            <p className="text-xs text-slate-400">
+              {energy?.enabled ? 'Ligado: o limite vale para todos os jogadores.' : 'Desligado: partidas ilimitadas.'}
+            </p>
+          </div>
+          <Switch
+            on={Boolean(energy?.enabled)} disabled={busy !== null || !energy}
+            label={`${energy?.enabled ? 'Desligar' : 'Ligar'} limite de partidas`}
+            onToggle={() => save('energy', () => setEnergyEnabled(!energy?.enabled))}
+          />
+        </div>
+        {energy && (
+          <div className="border-t border-slate-100 p-5 bg-slate-50 text-xs text-slate-600 space-y-1">
+            <p><strong>Plano grátis:</strong> {energy.free.capacity} partidas em sequência, +1 a cada {Math.round(energy.free.intervalSec / 60)} min.</p>
+            <p><strong>Premium:</strong> {energy.premium.capacity} partidas em sequência, +1 a cada {Math.round(energy.premium.intervalSec / 60)} min.</p>
+            <p className="text-slate-500">Só <strong>iniciar</strong> uma partida (botão Jogar, Próximo desafio ou Repetir) gasta 1; navegar entre desafios não gasta. Para mudar os números, edite <code className="font-bold">lib/energy.ts</code>.</p>
+          </div>
+        )}
       </section>
 
       <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">

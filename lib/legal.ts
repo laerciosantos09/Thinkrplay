@@ -1,6 +1,6 @@
 // Versão dos Termos de Uso e da Política de Privacidade. Ao mudar o texto de forma relevante, altere esta versão:
 // todos os usuários passam a ver a tela de aceite na próxima visita.
-export const LEGAL_VERSION = '2026-10-24.4';
+export const LEGAL_VERSION = '2026-10-24.5';
 export const LEGAL_UPDATED_LABEL = 'outubro de 2026';
 
 // Reservados: evitam se passar pela equipe do app. Administradores (criados por script) não são afetados.

@@ -2,6 +2,8 @@ import { HttpError, sql } from './_lib/db.js';
 import { APP_SETTINGS, isAppSettingEnabled, listGames } from './_lib/games.js';
 import { GAME_SLUGS, requireAdmin, requireSession, route } from './_lib/http.js';
 import { premiumState } from './_lib/premium.js';
+import { energyState } from './_lib/energy.js';
+import { ENERGY } from '../lib/energy.js';
 
 // GET: qualquer usuário logado vê os jogos habilitados, se os anúncios estão ligados e a situação do Premium.
 // POST: só administrador altera -> { game, enabled } (jogo) ou { setting: "ads" | "premium", enabled } (recurso do app).
@@ -29,9 +31,18 @@ export default route(['GET', 'POST'], async (req) => {
   } else {
     session = await requireSession(req);
   }
+  const premium = await premiumState(session);
+  const energyEnabled = await isAppSettingEnabled('energy');
   return {
     games: await listGames(),
     ads: { enabled: await isAppSettingEnabled('ads') },
-    premium: await premiumState(session),
+    premium,
+    // Limite de partidas: planos (para mostrar a vantagem do Premium) e, se ligado, o estoque deste usuário.
+    energy: {
+      enabled: energyEnabled,
+      free: ENERGY.free,
+      premium: ENERGY.premium,
+      state: energyEnabled ? await energyState(session.id, premium.active) : null,
+    },
   };
 });

@@ -10,8 +10,9 @@ export const assertDb = () => {
 
 // `expose`: mensagem 5xx segura para o usuário (ex.: falha do provedor de pagamento). Sem isso, erros 5xx
 // mostram só "Erro interno" ao cliente e o detalhe vai para o log.
+// `extra`: campos adicionais devolvidos junto com o erro (ex.: estado da energia ao ficar sem partidas).
 export class HttpError extends Error {
-  constructor(public status: number, message: string, public expose = false) {
+  constructor(public status: number, message: string, public expose = false, public extra?: Record<string, unknown>) {
     super(message);
   }
 }

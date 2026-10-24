@@ -49,12 +49,16 @@ export const TERMS: LegalDocument = {
       text: 'Podemos alterar, desativar ou remover jogos, níveis e desafios, e suspender o serviço para manutenção. Não garantimos funcionamento ininterrupto.',
     },
     {
+      title: 'Limite de Partidas',
+      text: 'Podemos limitar quantas partidas você inicia em sequência: cada partida iniciada usa uma das suas partidas disponíveis, que se recarregam com o tempo até um máximo. Os limites e o tempo de recarga podem ser diferentes entre o plano gratuito e o Premium, são exibidos no app e podem ser alterados ou desativados por nós.',
+    },
+    {
       title: 'Anúncios',
       text: 'Podemos exibir anúncios de terceiros (Google AdSense) para manter o serviço gratuito. Não controlamos nem endossamos o conteúdo dos anúncios nem os sites para onde levam. É proibido clicar em anúncios de forma artificial ou induzir outras pessoas a isso.',
     },
     {
       title: 'Plano Premium',
-      text: 'O plano Premium é uma assinatura recorrente, cobrada pelo valor informado no momento da contratação, que remove os anúncios e exibe o selo Premium no seu perfil e ao lado do seu nome nos rankings. Ele não concede pontos extras nem vantagem na pontuação. O pagamento é processado pelo Stripe; não guardamos os dados do seu cartão. O cancelamento interrompe a renovação automática, e o acesso continua até o fim do período já pago. Contratações feitas pela internet podem ser desfeitas em até 7 dias, conforme o Código de Defesa do Consumidor. Podemos alterar benefícios e valores, avisando antes da próxima cobrança, ou deixar de oferecer o plano a novos assinantes.',
+      text: 'O plano Premium é uma assinatura recorrente, cobrada pelo valor informado no momento da contratação, que remove os anúncios, exibe o selo Premium no seu perfil e ao lado do seu nome nos rankings e, quando o limite de partidas estiver ativo, oferece mais partidas em sequência e recarga mais rápida. Ele não concede pontos extras por desafio. O pagamento é processado pelo Stripe; não guardamos os dados do seu cartão. O cancelamento interrompe a renovação automática, e o acesso continua até o fim do período já pago. Contratações feitas pela internet podem ser desfeitas em até 7 dias, conforme o Código de Defesa do Consumidor. Podemos alterar benefícios e valores, avisando antes da próxima cobrança, ou deixar de oferecer o plano a novos assinantes.',
     },
     {
       title: 'Encerramento de Conta',
