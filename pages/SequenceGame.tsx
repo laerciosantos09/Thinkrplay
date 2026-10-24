@@ -45,7 +45,7 @@ const Board: React.FC<{ ctl: PlayCtl; puzzles: NonNullable<StartedPlay['puzzles'
         {puzzle.shown.map((n, i) => (
           <span key={i} className="min-w-[3.25rem] px-3 py-3 bg-slate-100 rounded-xl text-xl font-black text-slate-700 text-center">{n}</span>
         ))}
-        <span className="min-w-[3.25rem] px-3 py-3 bg-indigo-100 rounded-xl text-xl font-black text-indigo-500 text-center">?</span>
+        <span className="min-w-[3.25rem] px-3 py-3 bg-brand-100 rounded-xl text-xl font-black text-brand-500 text-center">?</span>
       </div>
       <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
         {puzzle.options.map((o) => (
@@ -53,7 +53,7 @@ const Board: React.FC<{ ctl: PlayCtl; puzzles: NonNullable<StartedPlay['puzzles'
             key={o}
             disabled={wrong.includes(o) || busy || !!ctl.result}
             onClick={() => answer(o)}
-            className="py-4 rounded-2xl text-2xl font-black bg-slate-800 text-white hover:bg-indigo-600 disabled:bg-red-100 disabled:text-red-400 active:scale-95 transition-all"
+            className="py-4 rounded-2xl text-2xl font-black bg-ink-800 text-white hover:bg-brand-600 disabled:bg-red-100 disabled:text-red-400 active:scale-95 transition-all"
           >
             {o}
           </button>
@@ -64,7 +64,7 @@ const Board: React.FC<{ ctl: PlayCtl; puzzles: NonNullable<StartedPlay['puzzles'
         {showHint ? (
           <p className="text-amber-700 bg-amber-50 rounded-xl px-4 py-2 inline-block">{puzzle.hint}</p>
         ) : (
-          <button onClick={() => setShowHint(true)} className="text-sm font-bold text-indigo-600 hover:underline">Pedir dica</button>
+          <button onClick={() => setShowHint(true)} className="text-sm font-bold text-brand-600 hover:underline">Pedir dica</button>
         )}
       </div>
       <WinPanel title={`Nível ${ctl.level} concluído!`} text={`${mistakes} erro(s).`} ctl={ctl} />

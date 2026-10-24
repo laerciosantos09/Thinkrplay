@@ -1,7 +1,29 @@
 @import "tailwindcss";
 
+/* Identidade Thinkrplay: violeta elétrico + azul-noite + menta. Veja docs/identidade-visual.md */
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Sora", "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  --color-brand-50: #f5f2ff;
+  --color-brand-100: #ebe5ff;
+  --color-brand-200: #d9ceff;
+  --color-brand-300: #bba8ff;
+  --color-brand-400: #9672ff;
+  --color-brand-500: #7a4dff;
+  --color-brand-600: #6a35f5;
+  --color-brand-700: #5a26d9;
+  --color-brand-800: #4a22ad;
+  --color-brand-900: #3a1f85;
+
+  --color-ink-700: #2a2058;
+  --color-ink-800: #1a1340;
+  --color-ink-900: #0f0a26;
+
+  --color-mint-300: #7df0cb;
+  --color-mint-400: #2ee6a6;
+  --color-mint-500: #14c98a;
+
   --animate-fadeIn: fadeIn 0.35s ease-out;
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(6px); }
@@ -10,5 +32,18 @@
 }
 
 html, body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
-body { background: #f8fafc; }
-.bg-gradient-main { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
+body { background: #f7f5ff; color: var(--color-ink-800); }
+h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.02em; }
+
+.bg-gradient-main {
+  background:
+    radial-gradient(900px 500px at 90% 0%, rgba(106, 53, 245, 0.55) 0%, transparent 60%),
+    radial-gradient(700px 420px at 0% 100%, rgba(46, 230, 166, 0.18) 0%, transparent 60%),
+    var(--color-ink-900);
+}
+.text-gradient {
+  background: linear-gradient(90deg, var(--color-brand-600), var(--color-brand-400) 60%, var(--color-mint-500));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

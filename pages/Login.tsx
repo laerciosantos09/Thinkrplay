@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { APP_NAME, APP_TAGLINE } from '../config';
+import { APP_TAGLINE } from '../config';
+import Logo from '../components/Logo';
 import { login, recoverPassword, register } from '../services/api';
 
 type Mode = 'login' | 'register' | 'recover';
 
-const inputClass = 'w-full px-5 py-4 rounded-xl border-2 border-slate-100 focus:border-indigo-500 outline-none transition-all';
+const inputClass = 'w-full px-5 py-4 rounded-xl border-2 border-slate-100 focus:border-brand-500 outline-none transition-all';
 
 const Field: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
   <div>
@@ -61,13 +62,18 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   return (
     <div className="min-h-screen bg-gradient-main flex flex-col md:flex-row items-center justify-center p-4 gap-10 pt-[max(1rem,env(safe-area-inset-top))]">
       <div className="max-w-md text-white text-center md:text-left">
-        <span className="bg-indigo-600 px-3 py-1 rounded text-2xl font-black">{APP_NAME[0]}</span>
-        <h1 className="text-5xl md:text-6xl font-black tracking-tighter mt-4">{APP_NAME}</h1>
-        <p className="text-lg md:text-xl text-slate-300 leading-relaxed mt-4">{APP_TAGLINE}. Sudoku, Hanói, Sequências e mais, com ranking diário, semanal, mensal e anual.</p>
+        <Logo size={56} className="mb-6" />
+        <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Treine a mente.<br /><span className="text-mint-400">Divirta-se.</span> Suba no ranking.</h1>
+        <p className="text-lg text-brand-200 leading-relaxed mt-4">{APP_TAGLINE}: Sudoku, Hanói, Sequências e mais, com ranking diário, semanal, mensal e anual.</p>
+        <div className="flex flex-wrap gap-2 mt-6 justify-center md:justify-start">
+          {['🔢 Sudoku', '🗼 Hanói', '🔍 Sequências', '🎯 Código'].map((t) => (
+            <span key={t} className="bg-white/10 border border-white/10 rounded-full px-3 py-1 text-sm font-semibold text-brand-100">{t}</span>
+          ))}
+        </div>
       </div>
 
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 sm:p-10 animate-fadeIn">
-        <h2 className="text-3xl font-black text-slate-800 mb-2">{titles[mode][0]}</h2>
+        <h2 className="text-3xl font-black text-ink-800 mb-2">{titles[mode][0]}</h2>
         <p className="text-slate-500 mb-6">{titles[mode][1]}</p>
 
         <form onSubmit={submit} className="space-y-4">
@@ -92,7 +98,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
 
           {mode === 'login' && (
             <div className="text-right">
-              <button type="button" onClick={() => switchMode('recover')} className="text-xs font-bold text-indigo-600 hover:underline">
+              <button type="button" onClick={() => switchMode('recover')} className="text-xs font-bold text-brand-600 hover:underline">
                 Esqueci minha senha
               </button>
             </div>
@@ -103,7 +109,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
 
           <button
             disabled={busy}
-            className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-60 transition-all"
+            className="w-full bg-brand-600 text-white py-4 rounded-xl font-black shadow-lg shadow-brand-100 hover:bg-brand-700 disabled:opacity-60 transition-all"
           >
             {busy ? 'Aguarde...' : mode === 'register' ? 'Cadastrar' : mode === 'recover' ? 'Redefinir senha' : 'Entrar'}
           </button>
@@ -112,9 +118,9 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
         <div className="mt-6 text-center border-t border-slate-100 pt-6 text-slate-500">
           {mode === 'login' ? (
             <>Não tem conta ainda?
-              <button onClick={() => switchMode('register')} className="ml-2 text-indigo-600 font-bold hover:underline">Crie uma agora</button></>
+              <button onClick={() => switchMode('register')} className="ml-2 text-brand-600 font-bold hover:underline">Crie uma agora</button></>
           ) : (
-            <button onClick={() => switchMode('login')} className="text-indigo-600 font-bold hover:underline">Voltar para o login</button>
+            <button onClick={() => switchMode('login')} className="text-brand-600 font-bold hover:underline">Voltar para o login</button>
           )}
         </div>
       </div>

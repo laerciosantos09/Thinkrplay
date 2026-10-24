@@ -53,7 +53,7 @@ const Board: React.FC<{ ctl: PlayCtl }> = ({ ctl }) => {
               {g.colors.map((c, k) => <span key={k} className="w-8 h-8 rounded-full" style={{ background: PALETTE[c] }} />)}
             </div>
             <span className="font-black tracking-widest text-slate-700" aria-label={`${g.exact} certas, ${g.partial} na posição errada`}>
-              {'●'.repeat(g.exact)}<span className="text-slate-400">{'○'.repeat(g.partial)}</span>
+              {g.exact + g.partial === 0 ? <span className="text-slate-300">—</span> : <>{'●'.repeat(g.exact)}<span className="text-slate-400">{'○'.repeat(g.partial)}</span></>}
             </span>
           </div>
         ))}
@@ -61,7 +61,7 @@ const Board: React.FC<{ ctl: PlayCtl }> = ({ ctl }) => {
 
       {revealed && (
         <div className="flex justify-center gap-2 mb-4">
-          {revealed.map((c, k) => <span key={k} className="w-9 h-9 rounded-full ring-2 ring-slate-800" style={{ background: PALETTE[c] }} />)}
+          {revealed.map((c, k) => <span key={k} className="w-9 h-9 rounded-full ring-2 ring-ink-800" style={{ background: PALETTE[c] }} />)}
         </div>
       )}
 
@@ -85,7 +85,7 @@ const Board: React.FC<{ ctl: PlayCtl }> = ({ ctl }) => {
           </div>
           {err && <p role="alert" className="text-center text-sm font-bold text-red-600 mb-3">{err}</p>}
           <div className="text-center">
-            <button onClick={submit} disabled={current.includes(null) || busy} className="bg-indigo-600 text-white px-8 py-3 rounded-xl font-black disabled:opacity-40">
+            <button onClick={submit} disabled={current.includes(null) || busy} className="bg-brand-600 text-white px-8 py-3 rounded-xl font-black disabled:opacity-40">
               {busy ? 'Conferindo...' : 'Testar combinação'}
             </button>
           </div>

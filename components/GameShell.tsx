@@ -18,11 +18,11 @@ const GameShell: React.FC<GameShellProps> = ({ title, slug, ctl, onBack, stats, 
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
       <div className="lg:col-span-2 bg-white p-4 sm:p-6 rounded-3xl shadow-sm border border-slate-100">
         <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
-          <button onClick={onBack} className="text-slate-400 hover:text-indigo-600 font-bold py-2">
+          <button onClick={onBack} className="text-slate-400 hover:text-brand-600 font-bold py-2">
             &larr; Voltar
           </button>
           <div className="text-center">
-            <h2 className="text-2xl font-black text-slate-800">{title}</h2>
+            <h2 className="text-2xl font-black text-ink-800">{title}</h2>
             {stats && <div className="text-xs text-slate-400 font-bold uppercase tracking-widest">{stats}</div>}
           </div>
           <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
@@ -30,7 +30,7 @@ const GameShell: React.FC<GameShellProps> = ({ title, slug, ctl, onBack, stats, 
               aria-label="Nível anterior"
               disabled={level <= 1}
               onClick={() => setLevel(level - 1)}
-              className="w-9 h-9 bg-white rounded shadow-sm hover:bg-indigo-50 disabled:opacity-40"
+              className="w-9 h-9 bg-white rounded shadow-sm hover:bg-brand-50 disabled:opacity-40"
             >
               &lsaquo;
             </button>
@@ -39,7 +39,7 @@ const GameShell: React.FC<GameShellProps> = ({ title, slug, ctl, onBack, stats, 
               aria-label="Próximo nível"
               disabled={level >= Math.min(unlocked, MAX_LEVEL)}
               onClick={() => setLevel(level + 1)}
-              className="w-9 h-9 bg-white rounded shadow-sm hover:bg-indigo-50 disabled:opacity-40"
+              className="w-9 h-9 bg-white rounded shadow-sm hover:bg-brand-50 disabled:opacity-40"
             >
               &rsaquo;
             </button>

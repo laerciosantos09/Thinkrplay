@@ -3,7 +3,7 @@ import GameShell, { WinPanel } from '../components/GameShell';
 import { PlayCtl, usePlay } from '../services/usePlay';
 import { disksForLevel, initialPegs, moveDisk } from '../lib/hanoi';
 
-const COLORS = ['bg-rose-500', 'bg-orange-500', 'bg-amber-500', 'bg-lime-500', 'bg-emerald-500', 'bg-cyan-500', 'bg-indigo-500', 'bg-fuchsia-500'];
+const COLORS = ['bg-rose-500', 'bg-orange-500', 'bg-amber-500', 'bg-lime-500', 'bg-emerald-500', 'bg-cyan-500', 'bg-brand-500', 'bg-fuchsia-500'];
 
 const Board: React.FC<{ ctl: PlayCtl; onMoves: (n: number) => void }> = ({ ctl, onMoves }) => {
   const n = disksForLevel(ctl.level);
@@ -38,7 +38,7 @@ const Board: React.FC<{ ctl: PlayCtl; onMoves: (n: number) => void }> = ({ ctl, 
             onClick={() => tap(i)}
             aria-label={`Torre ${i + 1}`}
             className={`relative h-64 rounded-2xl border-2 flex flex-col-reverse items-center pb-2 gap-1 transition-colors
-              ${from === i ? 'border-indigo-500 bg-indigo-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}
+              ${from === i ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}
           >
             <span className="absolute bottom-2 top-4 w-2 bg-slate-300 rounded-full -z-0" />
             {peg.map((d, k) => (

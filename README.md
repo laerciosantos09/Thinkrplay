@@ -1,4 +1,4 @@
-# Mentalize
+# Thinkrplay
 
 App (PWA) de jogos de raciocínio com login e ranking diário, semanal, mensal e anual.
 
@@ -8,7 +8,9 @@ App (PWA) de jogos de raciocínio com login e ranking diário, semanal, mensal e
 
 Jogos (até 1000 níveis cada, com liberação progressiva): Sudoku, Memória, Sequências, Torre de Hanói, Luzes e Código Secreto.
 
-> O nome do app fica em `config.ts` (`APP_NAME`), `index.html` e `vite.config.ts` (manifest). Para trocar, edite esses três pontos.
+> Identidade visual (logo, cores, fontes): veja [`docs/identidade-visual.md`](docs/identidade-visual.md). O nome fica em `config.ts` (`APP_NAME`), `components/Logo.tsx`, `index.html` e `vite.config.ts` (manifest).
+>
+> Depois de comprar o domínio, troque `og:image` em `index.html` por uma URL absoluta (ex.: `https://seudominio.com/og-image.png`) para a prévia ao compartilhar funcionar nas redes.
 
 ## Publicar
 

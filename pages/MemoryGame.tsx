@@ -40,9 +40,9 @@ const Board: React.FC<{ ctl: PlayCtl; seed: number; onMoves: (n: number) => void
               onClick={() => flip(idx)}
               aria-label={faceUp ? emoji : 'Carta virada'}
               className={`aspect-square rounded-2xl text-3xl sm:text-4xl flex items-center justify-center border-2 transition-all
-                ${matched.has(idx) ? 'bg-green-50 border-green-200' : faceUp ? 'bg-white border-indigo-300' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
+                ${matched.has(idx) ? 'bg-green-50 border-green-200' : faceUp ? 'bg-white border-brand-300' : 'bg-ink-800 border-slate-700 hover:bg-slate-700'}`}
             >
-              {faceUp ? emoji : <span className="text-indigo-400/40">?</span>}
+              {faceUp ? emoji : <span className="text-brand-400/40">?</span>}
             </button>
           );
         })}

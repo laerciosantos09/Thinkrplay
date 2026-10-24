@@ -29,7 +29,7 @@ const Board: React.FC<{ ctl: PlayCtl; seed: number; onTaps: (n: number, par: num
               key={`${r}-${c}`}
               onClick={() => tap(r, c)}
               aria-label={`Luz ${r + 1},${c + 1} ${on ? 'acesa' : 'apagada'}`}
-              className={`aspect-square rounded-xl transition-all active:scale-90 ${on ? 'bg-yellow-300 shadow-[0_0_18px_4px_rgba(253,224,71,0.7)]' : 'bg-slate-800'}`}
+              className={`aspect-square rounded-xl transition-all active:scale-90 ${on ? 'bg-yellow-300 shadow-[0_0_18px_4px_rgba(253,224,71,0.7)]' : 'bg-ink-800'}`}
             />
           )),
         )}

@@ -47,7 +47,7 @@ const Board: React.FC<{ ctl: PlayCtl; seed: number }> = ({ ctl, seed }) => {
 
   return (
     <>
-      <div className="grid grid-cols-9 border-2 border-slate-800 mb-6 max-w-[480px] mx-auto aspect-square touch-manipulation">
+      <div className="grid grid-cols-9 border-2 border-ink-800 mb-6 max-w-[480px] mx-auto aspect-square touch-manipulation">
         {board.map((row, r) =>
           row.map((cell, c) => {
             const given = puzzle[r][c] !== 0;
@@ -58,10 +58,10 @@ const Board: React.FC<{ ctl: PlayCtl; seed: number }> = ({ ctl, seed }) => {
                 key={`${r}-${c}`}
                 onClick={() => setSelected([r, c])}
                 className={`flex items-center justify-center text-lg sm:text-xl font-bold aspect-square border border-slate-200
-                  ${given ? 'text-slate-800 bg-slate-50' : isConflict(r, c) ? 'text-red-600' : 'text-indigo-600'}
-                  ${sel ? '!bg-indigo-200' : related ? 'bg-indigo-50' : ''}
-                  ${r % 3 === 0 && r !== 0 ? 'border-t-2 border-t-slate-800' : ''}
-                  ${c % 3 === 0 && c !== 0 ? 'border-l-2 border-l-slate-800' : ''}`}
+                  ${given ? 'text-ink-800 bg-slate-50' : isConflict(r, c) ? 'text-red-600' : 'text-brand-600'}
+                  ${sel ? '!bg-brand-200' : related ? 'bg-brand-50' : ''}
+                  ${r % 3 === 0 && r !== 0 ? 'border-t-2 border-t-ink-800' : ''}
+                  ${c % 3 === 0 && c !== 0 ? 'border-l-2 border-l-ink-800' : ''}`}
               >
                 {cell || ''}
               </button>
@@ -71,7 +71,7 @@ const Board: React.FC<{ ctl: PlayCtl; seed: number }> = ({ ctl, seed }) => {
       </div>
       <div className="grid grid-cols-5 gap-2 max-w-[480px] mx-auto">
         {[1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map((n) => (
-          <button key={n} onClick={() => input(n)} className="h-12 bg-slate-800 text-white rounded-xl font-bold hover:bg-indigo-600 active:scale-95">
+          <button key={n} onClick={() => input(n)} className="h-12 bg-ink-800 text-white rounded-xl font-bold hover:bg-brand-600 active:scale-95">
             {n === 0 ? '⌫' : n}
           </button>
         ))}
