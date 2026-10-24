@@ -4,10 +4,9 @@ import { Tier } from './lib/tiers';
 export const APP_NAME = 'Thinkrplay';
 export const APP_TAGLINE = 'Jogos de raciocínio para treinar a mente';
 
-// Identificação do responsável pelo serviço, exibida nos Termos e na Política de Privacidade.
-// Defina na Vercel (Settings > Environment Variables) antes de publicar: VITE_LEGAL_CONTROLLER e VITE_LEGAL_CONTACT_EMAIL.
-export const LEGAL_CONTROLLER = import.meta.env.VITE_LEGAL_CONTROLLER ?? '[defina VITE_LEGAL_CONTROLLER: nome ou razão social e CPF/CNPJ]';
-export const LEGAL_CONTACT_EMAIL = import.meta.env.VITE_LEGAL_CONTACT_EMAIL ?? '[defina VITE_LEGAL_CONTACT_EMAIL]';
+// E-mail de suporte exibido no Perfil e citado nos Termos e na Política de Privacidade (opcional, mas recomendado).
+// Defina na Vercel (Environment Variables): VITE_SUPPORT_EMAIL.
+export const SUPPORT_EMAIL: string | undefined = import.meta.env.VITE_SUPPORT_EMAIL || undefined;
 
 export const TIER_LABELS: Record<Tier, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User } from '../types';
 import { changePassword, deleteAccount, updateUsername } from '../services/api';
 import { USERNAME_PATTERN } from '../lib/legal';
+import { SUPPORT_EMAIL } from '../config';
 
 interface ProfileProps {
   user: User;
@@ -162,10 +163,11 @@ const Profile: React.FC<ProfileProps> = ({ user, onUserChange, onDeleted, onBack
         </form>
       </Card>
 
-      <Card title="Termos e privacidade">
-        <div className="flex flex-wrap gap-3 text-sm font-bold">
+      <Card title="Termos, privacidade e suporte">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm font-bold">
           <a href="/termos" target="_blank" rel="noopener" className="text-brand-700 hover:underline">Termos de Uso</a>
           <a href="/privacidade" target="_blank" rel="noopener" className="text-brand-700 hover:underline">Política de Privacidade</a>
+          {SUPPORT_EMAIL && <a href={`mailto:${SUPPORT_EMAIL}`} className="text-brand-700 hover:underline">Falar com o suporte</a>}
         </div>
       </Card>
 
