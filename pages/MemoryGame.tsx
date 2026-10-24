@@ -4,7 +4,7 @@ import { PlayCtl, usePlay } from '../services/usePlay';
 import { buildDeck } from '../lib/memory';
 
 const Board: React.FC<{ ctl: PlayCtl; seed: number; onMoves: (n: number) => void }> = ({ ctl, seed, onMoves }) => {
-  const deck = useMemo(() => buildDeck(seed, ctl.level), [seed, ctl.level]);
+  const deck = useMemo(() => buildDeck(seed, ctl.tier, ctl.challenge), [seed, ctl.tier, ctl.challenge]);
   const [open, setOpen] = useState<number[]>([]);
   const [matched, setMatched] = useState<Set<number>>(new Set());
   const [flips, setFlips] = useState<[number, number][]>([]);
@@ -47,7 +47,7 @@ const Board: React.FC<{ ctl: PlayCtl; seed: number; onMoves: (n: number) => void
           );
         })}
       </div>
-      <WinPanel title="Excelente memória!" text={`Nível ${ctl.level} concluído em ${flips.length} movimentos.`} ctl={ctl} />
+      <WinPanel title="Excelente memória!" text={`Desafio ${ctl.challenge} concluído em ${flips.length} movimentos.`} ctl={ctl} />
     </>
   );
 };

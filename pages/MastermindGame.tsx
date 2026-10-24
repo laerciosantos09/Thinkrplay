@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import GameShell, { WinPanel } from '../components/GameShell';
 import { PlayCtl, usePlay } from '../services/usePlay';
-import { PALETTE, configForLevel } from '../lib/mastermind';
+import { PALETTE, configFor } from '../lib/mastermind';
+import { TierProgress } from '../lib/tiers';
 
 interface Guess { colors: number[]; exact: number; partial: number }
-interface GuessResponse { exact: number; partial: number; done: boolean; won?: boolean; code?: number[]; points?: number; unlocked?: number }
+interface GuessResponse { exact: number; partial: number; done: boolean; won?: boolean; code?: number[]; points?: number; awarded?: boolean; progress?: TierProgress }
 
 // O código secreto nunca sai do servidor: ele devolve só o feedback de cada palpite.
 const Board: React.FC<{ ctl: PlayCtl }> = ({ ctl }) => {
-  const cfg = configForLevel(ctl.level);
+  const cfg = configFor(ctl.tier, ctl.challenge);
   const [guesses, setGuesses] = useState<Guess[]>([]);
   const [current, setCurrent] = useState<(number | null)[]>(Array(cfg.length).fill(null));
   const [revealed, setRevealed] = useState<number[] | null>(null);

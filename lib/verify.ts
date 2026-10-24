@@ -1,9 +1,10 @@
 // Verificação de partidas: roda no servidor, que refaz o jogo a partir da semente.
 import { generateSudoku } from './sudoku.js';
 import { buildDeck } from './memory.js';
-import { disksForLevel, initialPegs, moveDisk } from './hanoi.js';
+import { generateHanoi, isGoal, moveDisk } from './hanoi.js';
 import { generateLights, isSolved, press } from './lights.js';
 import { mulberry32 } from './rng.js';
+import { Tier } from './tiers.js';
 
 const isPair = (v: unknown): v is [number, number] =>
   Array.isArray(v) && v.length === 2 && v.every((n) => Number.isInteger(n));
@@ -17,8 +18,8 @@ export interface Verified {
 
 const fail = (reason: string): Verified => ({ ok: false, reason, actions: 0 });
 
-export const verifySudoku = (seed: number, level: number, proof: any): Verified => {
-  const { puzzle, solution } = generateSudoku(mulberry32(seed), level);
+export const verifySudoku = (seed: number, tier: Tier, challenge: number, proof: any): Verified => {
+  const { puzzle, solution } = generateSudoku(mulberry32(seed), tier, challenge);
   const board = proof?.board;
   const valid =
     Array.isArray(board) && board.length === 9 &&
@@ -28,8 +29,8 @@ export const verifySudoku = (seed: number, level: number, proof: any): Verified 
   return { ok: true, actions: puzzle.flat().filter((v) => v === 0).length };
 };
 
-export const verifyMemory = (seed: number, level: number, proof: any): Verified => {
-  const deck = buildDeck(seed, level);
+export const verifyMemory = (seed: number, tier: Tier, challenge: number, proof: any): Verified => {
+  const deck = buildDeck(seed, tier, challenge);
   const flips = proof?.flips;
   if (!Array.isArray(flips) || flips.length === 0 || flips.length > deck.length * 20) return fail('Jogadas inválidas.');
   const matched = new Set<number>();
@@ -43,22 +44,24 @@ export const verifyMemory = (seed: number, level: number, proof: any): Verified 
   return { ok: true, actions: flips.length, par: deck.length / 2 };
 };
 
-export const verifyHanoi = (_seed: number, level: number, proof: any): Verified => {
-  const n = disksForLevel(level);
+export const verifyHanoi = (seed: number, tier: Tier, challenge: number, proof: any): Verified => {
+  const puzzle = generateHanoi(mulberry32(seed), tier, challenge);
   const moves = proof?.moves;
-  if (!Array.isArray(moves) || moves.length < 2 ** n - 1 || moves.length > 2 ** n * 8) return fail('Jogadas inválidas.');
-  let pegs: number[][] | null = initialPegs(n);
+  if (!Array.isArray(moves) || moves.length < puzzle.optimal || moves.length > puzzle.optimal * 8 + 20) {
+    return fail('Jogadas inválidas.');
+  }
+  let pegs: number[][] | null = puzzle.pegs;
   for (const m of moves) {
     if (!isPair(m)) return fail('Jogadas inválidas.');
     pegs = moveDisk(pegs, m[0], m[1]);
     if (!pegs) return fail('Movimento ilegal.');
   }
-  if (pegs[2].length !== n) return fail('A partida não foi concluída.');
-  return { ok: true, actions: moves.length, par: 2 ** n - 1 };
+  if (!isGoal(pegs, puzzle.goal, puzzle.disks)) return fail('A partida não foi concluída.');
+  return { ok: true, actions: moves.length, par: puzzle.optimal };
 };
 
-export const verifyLights = (seed: number, level: number, proof: any): Verified => {
-  const { board, par } = generateLights(mulberry32(seed), level);
+export const verifyLights = (seed: number, tier: Tier, challenge: number, proof: any): Verified => {
+  const { board, par } = generateLights(mulberry32(seed), tier, challenge);
   const taps = proof?.taps;
   const size = board.length;
   if (!Array.isArray(taps) || taps.length === 0 || taps.length > size * size * 6) return fail('Jogadas inválidas.');

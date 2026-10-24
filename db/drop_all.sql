@@ -1,6 +1,7 @@
 -- ATENÇÃO: APAGA TODOS OS DADOS (usuários, pontuações, progresso). Use só em desenvolvimento.
 DROP TABLE IF EXISTS auth_attempts CASCADE;
 DROP TABLE IF EXISTS plays CASCADE;
+DROP TABLE IF EXISTS tier_progress CASCADE;
 DROP TABLE IF EXISTS progress CASCADE;
 DROP TABLE IF EXISTS scores CASCADE;
 DROP TABLE IF EXISTS users CASCADE;

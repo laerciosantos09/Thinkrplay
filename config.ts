@@ -1,8 +1,10 @@
 import { GameInfo } from './types';
+import { Tier } from './lib/tiers';
 
 export const APP_NAME = 'Thinkrplay';
 export const APP_TAGLINE = 'Jogos de raciocínio para treinar a mente';
-export const MAX_LEVEL = 1000;
+
+export const TIER_LABELS: Record<Tier, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
 export const GAMES: GameInfo[] = [
   { id: '1', name: 'Sudoku', slug: 'sudoku', description: 'Lógica e números', icon: '🔢', color: 'bg-linear-to-br from-sky-400 to-blue-600' },

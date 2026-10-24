@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import GameShell, { WinPanel } from '../components/GameShell';
 import { PlayCtl, usePlay } from '../services/usePlay';
 import { StartedPlay } from '../services/api';
+import { TierProgress } from '../lib/tiers';
 
-interface GuessResponse { correct: boolean; done: boolean; points?: number; unlocked?: number }
+interface GuessResponse { correct: boolean; done: boolean; points?: number; awarded?: boolean; progress?: TierProgress }
 
 // As respostas ficam só no servidor: cada clique é conferido lá.
 const Board: React.FC<{ ctl: PlayCtl; puzzles: NonNullable<StartedPlay['puzzles']>; onProgress: (s: string) => void }> = ({ ctl, puzzles, onProgress }) => {
@@ -67,7 +68,7 @@ const Board: React.FC<{ ctl: PlayCtl; puzzles: NonNullable<StartedPlay['puzzles'
           <button onClick={() => setShowHint(true)} className="text-sm font-bold text-brand-600 hover:underline">Pedir dica</button>
         )}
       </div>
-      <WinPanel title={`Nível ${ctl.level} concluído!`} text={`${mistakes} erro(s).`} ctl={ctl} />
+      <WinPanel title={`Desafio ${ctl.challenge} concluído!`} text={`${mistakes} erro(s).`} ctl={ctl} />
     </>
   );
 };

@@ -5,7 +5,7 @@ import { generateLights, isSolved, press } from '../lib/lights';
 import { mulberry32 } from '../lib/rng';
 
 const Board: React.FC<{ ctl: PlayCtl; seed: number; onTaps: (n: number, par: number) => void }> = ({ ctl, seed, onTaps }) => {
-  const initial = useMemo(() => generateLights(mulberry32(seed), ctl.level), [seed, ctl.level]);
+  const initial = useMemo(() => generateLights(mulberry32(seed), ctl.tier, ctl.challenge), [seed, ctl.tier, ctl.challenge]);
   const [board, setBoard] = useState(initial.board);
   const [taps, setTaps] = useState<[number, number][]>([]);
 

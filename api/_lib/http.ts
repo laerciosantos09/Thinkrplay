@@ -8,7 +8,6 @@ export interface Session {
 }
 
 export const GAME_SLUGS = ['sudoku', 'memory', 'sequence', 'hanoi', 'lights', 'mastermind'];
-export const MAX_LEVEL = 1000;
 
 const COOKIE = 'session';
 const MAX_AGE = 60 * 60 * 24 * 30;
@@ -78,10 +77,11 @@ export const route = (methods: string[], handler: Handler) =>
       res.setHeader('Cache-Control', 'no-store');
       res.status(200).json(body);
     } catch (err) {
-      if (err instanceof HttpError) {
+      if (err instanceof HttpError && err.status < 500) {
         res.status(err.status).json({ error: err.message });
       } else {
-        console.error(err);
+        // Detalhes de configuração/infraestrutura ficam só no log do servidor, nunca na resposta.
+        console.error(err instanceof HttpError ? err.message : err);
         res.status(500).json({ error: 'Erro interno. Tente novamente.' });
       }
     }
