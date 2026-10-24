@@ -64,12 +64,20 @@ Quem tem perfil `admin` (veja "Criar o admin" abaixo) vê **⚙️ Configuraçõ
 
 ## Scripts do banco (Neon)
 
+O SQL fica em **migrações numeradas** (`db/migrations/`). Cada uma roda sozinha e pode rodar várias vezes sem problema: as que já foram aplicadas não fazem nada. No Neon: SQL Editor → colar o arquivo → Run, **em ordem**.
+
 | Arquivo | O que faz |
 | --- | --- |
-| `db/schema.sql` | Cria/atualiza todas as tabelas (pode rodar várias vezes; migra bancos anteriores aos níveis e remove a antiga tabela `progress`). No Neon: SQL Editor → colar → Run. |
+| `db/migrations/001_base.sql` | Usuários, pontuações, partidas e tentativas de login |
+| `db/migrations/002_levels_tiers.sql` | Níveis Easy/Medium/Hard: coluna `tier` e tabela `tier_progress` (**remove** a antiga `progress`) |
+| `db/migrations/003_game_settings.sql` | Configurações do admin (jogos ativos/desativados) |
+| `db/migrations/004_profile_terms_rankings.sql` | Perfil (versão de sessão), aceite dos Termos e índice do ranking geral |
+| `db/schema.sql` | Tudo junto, para banco novo. **Gerado** das migrações (`npm run db:schema`) |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
-| `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas. |
-| `db/drop_all.sql` | Apaga tudo (só desenvolvimento). |
+| `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas |
+| `db/drop_all.sql` | Apaga tudo (só desenvolvimento) |
+
+Ao mudar o banco, **crie uma nova migração** (`005_...sql`) em vez de editar as antigas, e rode `npm run db:schema`. `npm test` confere que as migrações, o `schema.sql` e a atualização de bancos de versões anteriores chegam à mesma estrutura, sem perder dados. `npm run db:migrate` aplica todas as migrações pela linha de comando.
 
 Criar o admin, de duas formas (a senha nunca vai para arquivo nem para o SQL):
 ```bash
