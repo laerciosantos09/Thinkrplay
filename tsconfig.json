@@ -25,5 +25,15 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": [
+    "*.ts",
+    "*.tsx",
+    "pages",
+    "components",
+    "services",
+    "lib",
+    "api",
+    "scripts"
+  ]
 }

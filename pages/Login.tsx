@@ -1,148 +1,127 @@
-
 import React, { useState } from 'react';
 import { User } from '../types';
+import { APP_TAGLINE } from '../config';
+import Logo from '../components/Logo';
+import { login, recoverPassword, register } from '../services/api';
 
-interface LoginProps {
-  onLogin: (user: User) => void;
-}
+type Mode = 'login' | 'register' | 'recover';
 
-const Login: React.FC<LoginProps> = ({ onLogin }) => {
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [isRecovering, setIsRecovering] = useState(false);
-  const [formData, setFormData] = useState({
-    username: '',
-    email: '',
-    password: '',
-    secretWord: ''
-  });
+const inputClass = 'w-full px-5 py-4 rounded-xl border-2 border-slate-100 focus:border-brand-500 outline-none transition-all';
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Simulação de login/registro (em produção usaria um endpoint Node.js)
-    const mockUser: User = {
-      id: Math.random().toString(36).substr(2, 9),
-      username: formData.username || formData.email.split('@')[0],
-      email: formData.email
-    };
-    onLogin(mockUser);
+const Field: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: string }> = ({ label, ...props }) => (
+  <div>
+    <label className="block text-sm font-bold text-slate-700 mb-2">{label}</label>
+    <input required className={inputClass} {...props} />
+  </div>
+);
+
+const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
+  const [mode, setMode] = useState<Mode>('login');
+  const [form, setForm] = useState({ username: '', email: '', password: '', secretWord: '', newPassword: '' });
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm({ ...form, [key]: e.target.value });
+
+  const switchMode = (next: Mode) => {
+    setMode(next);
+    setError(null);
+    setNotice(null);
   };
 
-  if (isRecovering) {
-    return (
-      <div className="min-h-screen bg-gradient-main flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-10">
-          <h2 className="text-3xl font-black text-slate-800 mb-2">Recuperar Senha</h2>
-          <p className="text-slate-500 mb-8">Insira sua palavra secreta definida no cadastro.</p>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Palavra Secreta</label>
-              <input 
-                type="text" required
-                className="w-full px-5 py-4 rounded-xl border-2 border-slate-100 focus:border-indigo-500 outline-none transition-all"
-                placeholder="Ex: Nome do primeiro pet"
-              />
-            </div>
-            <button className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all">
-              Redefinir
-            </button>
-          </form>
-          <button onClick={() => setIsRecovering(false)} className="w-full mt-6 text-slate-400 font-bold hover:text-slate-600">Voltar para o Login</button>
-        </div>
-      </div>
-    );
-  }
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      if (mode === 'recover') {
+        await recoverPassword({ email: form.email, secretWord: form.secretWord, newPassword: form.newPassword });
+        setForm({ ...form, password: '', secretWord: '', newPassword: '' });
+        switchMode('login');
+        setNotice('Senha redefinida. Entre com a nova senha.');
+      } else if (mode === 'register') {
+        onLogin((await register(form)).user);
+      } else {
+        onLogin((await login(form.email, form.password)).user);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Algo deu errado.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const titles: Record<Mode, [string, string]> = {
+    login: ['Bem-vindo de volta', 'Faça login com sua conta.'],
+    register: ['Criar Conta', 'Cadastre-se para competir nos rankings.'],
+    recover: ['Recuperar Senha', 'Informe seu e-mail, a palavra secreta e uma nova senha.'],
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-main flex flex-col md:flex-row items-center justify-center p-4 gap-12">
-      <div className="max-w-md text-white">
-        <div className="mb-8">
-          <span className="bg-indigo-600 px-3 py-1 rounded text-2xl font-black">P</span>
-          <h1 className="text-6xl font-black tracking-tighter mt-4">Passatempo<span className="text-indigo-400">SP</span></h1>
-        </div>
-        <p className="text-xl text-slate-300 leading-relaxed mb-8">Sua dose diária de desafios mentais. Sudoku, Quiz, Cobrinha e muito mais em um só lugar.</p>
-        <div className="flex gap-4">
-          <div className="bg-white/10 p-4 rounded-2xl backdrop-blur">
-            <span className="text-3xl">🎯</span>
-            <p className="text-xs font-bold uppercase mt-2 text-slate-400">Ranking Global</p>
-          </div>
-          <div className="bg-white/10 p-4 rounded-2xl backdrop-blur">
-            <span className="text-3xl">🌟</span>
-            <p className="text-xs font-bold uppercase mt-2 text-slate-400">+1000 Níveis</p>
-          </div>
+    <div className="min-h-screen bg-gradient-main flex flex-col md:flex-row items-center justify-center p-4 gap-10 pt-[max(1rem,env(safe-area-inset-top))]">
+      <div className="max-w-md text-white text-center md:text-left">
+        <Logo size={56} className="mb-6" />
+        <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">Treine a mente.<br /><span className="text-mint-400">Divirta-se.</span> Suba no ranking.</h1>
+        <p className="text-lg text-brand-200 leading-relaxed mt-4">{APP_TAGLINE}: Sudoku, Hanói, Sequências e mais, com ranking diário, semanal, mensal e anual.</p>
+        <div className="flex flex-wrap gap-2 mt-6 justify-center md:justify-start">
+          {['🔢 Sudoku', '🗼 Hanói', '🔍 Sequências', '🎯 Código'].map((t) => (
+            <span key={t} className="bg-white/10 border border-white/10 rounded-full px-3 py-1 text-sm font-semibold text-brand-100">{t}</span>
+          ))}
         </div>
       </div>
 
-      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-10 animate-fadeIn">
-        <h2 className="text-3xl font-black text-slate-800 mb-2">{isRegistering ? 'Criar Conta' : 'Bem-vindo de volta'}</h2>
-        <p className="text-slate-500 mb-8">{isRegistering ? 'Cadastre-se para competir nos rankings.' : 'Faça login com sua conta.'}</p>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {isRegistering && (
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Nome de Usuário</label>
-              <input 
-                type="text" required
-                value={formData.username}
-                onChange={(e) => setFormData({...formData, username: e.target.value})}
-                className="w-full px-5 py-4 rounded-xl border-2 border-slate-100 focus:border-indigo-500 outline-none transition-all"
-                placeholder="Ex: joaosilva"
-              />
-            </div>
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 sm:p-10 animate-fadeIn">
+        <h2 className="text-3xl font-black text-ink-800 mb-2">{titles[mode][0]}</h2>
+        <p className="text-slate-500 mb-6">{titles[mode][1]}</p>
+
+        <form onSubmit={submit} className="space-y-4">
+          {mode === 'register' && (
+            <Field label="Nome de Usuário" type="text" autoComplete="username" minLength={3} maxLength={24}
+              value={form.username} onChange={set('username')} placeholder="Ex: joaosilva" />
           )}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">E-mail</label>
-            <input 
-              type="email" required
-              value={formData.email}
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="w-full px-5 py-4 rounded-xl border-2 border-slate-100 focus:border-indigo-500 outline-none transition-all"
-              placeholder="seu@email.com"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Senha</label>
-            <input 
-              type="password" required
-              value={formData.password}
-              onChange={(e) => setFormData({...formData, password: e.target.value})}
-              className="w-full px-5 py-4 rounded-xl border-2 border-slate-100 focus:border-indigo-500 outline-none transition-all"
-              placeholder="••••••••"
-            />
-          </div>
-          {isRegistering && (
-            <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Palavra Secreta (Recuperação)</label>
-              <input 
-                type="text" required
-                value={formData.secretWord}
-                onChange={(e) => setFormData({...formData, secretWord: e.target.value})}
-                className="w-full px-5 py-4 rounded-xl border-2 border-slate-100 focus:border-indigo-500 outline-none transition-all"
-                placeholder="Ex: Nome da sua escola"
-              />
-            </div>
+          <Field label="E-mail" type="email" autoComplete="email" value={form.email} onChange={set('email')} placeholder="seu@email.com" />
+          {mode !== 'recover' && (
+            <Field label="Senha" type="password" minLength={mode === 'register' ? 8 : undefined}
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              value={form.password} onChange={set('password')} placeholder="••••••••" />
+          )}
+          {mode !== 'login' && (
+            <Field label="Palavra Secreta (recuperação)" type="text" autoComplete="off" minLength={4}
+              value={form.secretWord} onChange={set('secretWord')} placeholder="Ex: Nome da sua escola" />
+          )}
+          {mode === 'recover' && (
+            <Field label="Nova senha" type="password" minLength={8} autoComplete="new-password"
+              value={form.newPassword} onChange={set('newPassword')} placeholder="••••••••" />
           )}
 
-          {!isRegistering && (
+          {mode === 'login' && (
             <div className="text-right">
-              <button type="button" onClick={() => setIsRecovering(true)} className="text-xs font-bold text-indigo-600 hover:underline">Esqueci minha senha</button>
+              <button type="button" onClick={() => switchMode('recover')} className="text-xs font-bold text-brand-600 hover:underline">
+                Esqueci minha senha
+              </button>
             </div>
           )}
 
-          <button className="w-full bg-indigo-600 text-white py-4 rounded-xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all hover:scale-[1.02] active:scale-[0.98]">
-            {isRegistering ? 'Cadastrar' : 'Entrar na Plataforma'}
+          {error && <p role="alert" className="text-sm font-bold text-red-600 bg-red-50 rounded-xl px-4 py-3">{error}</p>}
+          {notice && <p className="text-sm font-bold text-green-700 bg-green-50 rounded-xl px-4 py-3">{notice}</p>}
+
+          <button
+            disabled={busy}
+            className="w-full bg-brand-600 text-white py-4 rounded-xl font-black shadow-lg shadow-brand-100 hover:bg-brand-700 disabled:opacity-60 transition-all"
+          >
+            {busy ? 'Aguarde...' : mode === 'register' ? 'Cadastrar' : mode === 'recover' ? 'Redefinir senha' : 'Entrar'}
           </button>
         </form>
 
-        <div className="mt-8 text-center border-t border-slate-100 pt-8">
-          <p className="text-slate-500">
-            {isRegistering ? 'Já tem uma conta?' : 'Não tem conta ainda?'}
-            <button 
-              onClick={() => setIsRegistering(!isRegistering)}
-              className="ml-2 text-indigo-600 font-bold hover:underline"
-            >
-              {isRegistering ? 'Faça login' : 'Crie uma agora'}
-            </button>
-          </p>
+        <div className="mt-6 text-center border-t border-slate-100 pt-6 text-slate-500">
+          {mode === 'login' ? (
+            <>Não tem conta ainda?
+              <button onClick={() => switchMode('register')} className="ml-2 text-brand-600 font-bold hover:underline">Crie uma agora</button></>
+          ) : (
+            <button onClick={() => switchMode('login')} className="text-brand-600 font-bold hover:underline">Voltar para o login</button>
+          )}
         </div>
       </div>
     </div>

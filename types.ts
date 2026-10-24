@@ -1,8 +1,8 @@
-
 export interface User {
   id: string;
   username: string;
   email: string;
+  role?: 'user' | 'admin';
 }
 
 export interface Score {
@@ -21,10 +21,4 @@ export interface GameInfo {
   description: string;
   icon: string;
   color: string;
-}
-
-export interface QuizQuestion {
-  question: string;
-  options: string[];
-  correctAnswer: number;
 }
