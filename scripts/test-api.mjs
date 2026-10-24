@@ -49,13 +49,29 @@ const code = async (...a) => (await call(...a)).statusCode;
 const backdate = (id, secs) => pg.query(`UPDATE plays SET started_at = now() - ($2 || ' seconds')::interval WHERE id = $1`, [id, String(secs)]);
 
 const { generateSudoku } = await import('../lib/sudoku.ts');
-const { buildDeck } = await import('../lib/memory.ts');
-const { disksForLevel } = await import('../lib/hanoi.ts');
+const { buildDeck, pairsFor } = await import('../lib/memory.ts');
+const { generateHanoi, moveDisk } = await import('../lib/hanoi.ts');
 const { generateLights } = await import('../lib/lights.ts');
 const { generateSequence } = await import('../lib/sequence.ts');
-const { generateCode, configForLevel } = await import('../lib/mastermind.ts');
+const { generateCode, configFor } = await import('../lib/mastermind.ts');
 const { mulberry32 } = await import('../lib/rng.ts');
 const { sequenceSeed } = await import('../lib/rounds.ts');
+
+const start = (game, tier, challenge) => call('play/start', { body: { game, tier, challenge } });
+const seedOf = async (playId) => (await pg.query('SELECT seed FROM plays WHERE id=$1', [playId])).rows[0].seed;
+const progressOf = async () => await ok('progress', { method: 'GET' });
+const scoreCount = async (game) => (await pg.query(`SELECT count(*)::int n FROM scores WHERE game=$1`, [game])).rows[0].n;
+
+// resolve um desafio de Memória (o teste conhece o baralho pela semente)
+const solveMemory = async (tier, challenge) => {
+  const p = await ok('play/start', { body: { game: 'memory', tier, challenge } });
+  const deck = buildDeck(p.seed, tier, challenge);
+  assert.equal(deck.length, pairsFor(tier, challenge) * 2, 'tamanho do baralho segue o tier');
+  const flips = []; const seen = new Set();
+  deck.forEach((e, i) => { if (seen.has(e)) return; seen.add(e); flips.push([i, deck.indexOf(e, i + 1)]); });
+  await backdate(p.playId, 600);
+  return ok('play/finish', { body: { playId: p.playId, proof: { flips } } });
+};
 
 // --- auth
 assert.equal(await code('auth/me', { method: 'GET' }), 401);
@@ -79,108 +95,158 @@ assert.equal(await code('auth/recover', { body: { email: 'ana@x.com', secretWord
 await ok('auth/recover', { body: { email: 'ana@x.com', secretWord: 'ESCOLA', newPassword: 'nova-senha-1' } });
 await ok('auth/login', { body: { email: 'ana@x.com', password: 'nova-senha-1' } });
 
-// --- níveis bloqueados
-assert.equal(await code('play/start', { body: { game: 'sudoku', level: 2 } }), 403);
-assert.equal(await code('play/start', { body: { game: 'xadrez', level: 1 } }), 400);
+// --- validações de entrada e bloqueios
+assert.equal(await code('play/start', { body: { game: 'xadrez', tier: 'easy', challenge: 1 } }), 400);
+assert.equal(await code('play/start', { body: { game: 'memory', tier: 'insane', challenge: 1 } }), 400);
+assert.equal(await code('play/start', { body: { game: 'memory', tier: 'easy', challenge: 501 } }), 400);
+assert.equal(await code('play/start', { body: { game: 'memory', tier: 'easy', challenge: 2 } }), 403, 'desafio 2 só após resolver o 1');
+const lockedMedium = await start('memory', 'medium', 1);
+assert.equal(lockedMedium.statusCode, 403);
+assert.match(lockedMedium.body.error, /10 desafios/);
+assert.equal(await code('play/start', { body: { game: 'memory', tier: 'hard', challenge: 1 } }), 403);
+assert.deepEqual(await progressOf(), {}, 'todos começam sem progresso (Easy)');
 
-// --- Sudoku: prova errada, rápida demais, certa, reenvio
-let p = await ok('play/start', { body: { game: 'sudoku', level: 1 } });
-const sud = generateSudoku(mulberry32(p.seed), 1);
+// --- Sudoku easy #1: prova errada, rápida demais, certa, reenvio, replay sem pontos, corrida
+let p = await ok('play/start', { body: { game: 'sudoku', tier: 'easy', challenge: 1 } });
+assert.equal(p.scored, true);
+const sud = generateSudoku(mulberry32(p.seed), 'easy', 1);
 assert.equal(await code('play/finish', { body: { playId: p.playId, proof: { board: sud.puzzle } } }), 422);
 assert.equal(await code('play/finish', { body: { playId: p.playId, proof: { board: sud.solution } } }), 422, 'rápida demais');
 await backdate(p.playId, 600);
 const fin = await ok('play/finish', { body: { playId: p.playId, proof: { board: sud.solution } } });
-assert.ok(fin.points >= 20 && fin.unlocked === 2);
+assert.equal(fin.awarded, true); assert.ok(fin.points >= 20);
+assert.deepEqual(fin.progress, { easy: 1, medium: 0, hard: 0 });
 assert.equal(await code('play/finish', { body: { playId: p.playId, proof: { board: sud.solution } } }), 409, 'reenvio');
-assert.equal(await code('play/start', { body: { game: 'sudoku', level: 2 } }), 200, 'nível 2 liberado');
-// corrida: duas conclusões simultâneas, só uma pontua
-p = await ok('play/start', { body: { game: 'sudoku', level: 1 } });
+// replay do mesmo desafio: resolve, mas não pontua nem avança
+p = await ok('play/start', { body: { game: 'sudoku', tier: 'easy', challenge: 1 } });
+assert.equal(p.scored, false);
 await backdate(p.playId, 600);
-const s2 = generateSudoku(mulberry32(p.seed), 1);
-const race = await Promise.all([1, 2, 3].map(() => code('play/finish', { body: { playId: p.playId, proof: { board: s2.solution } } })));
-assert.equal(race.filter((c) => c === 200).length, 1, `corrida: ${race}`);
-assert.equal((await pg.query(`SELECT count(*)::int n FROM scores WHERE game='sudoku'`)).rows[0].n, 2);
+const replay = await ok('play/finish', { body: { playId: p.playId, proof: { board: generateSudoku(mulberry32(p.seed), 'easy', 1).solution } } });
+assert.equal(replay.awarded, false); assert.equal(replay.points, 0); assert.equal(replay.progress.easy, 1);
+assert.equal(await scoreCount('sudoku'), 1, 'repetição não gera pontuação');
+// corrida: duas partidas do desafio 2 abertas ao mesmo tempo; só uma avança/pontua
+const [a1, a2] = [await ok('play/start', { body: { game: 'sudoku', tier: 'easy', challenge: 2 } }), await ok('play/start', { body: { game: 'sudoku', tier: 'easy', challenge: 2 } })];
+await backdate(a1.playId, 600); await backdate(a2.playId, 600);
+const sol2 = (pl) => ({ board: generateSudoku(mulberry32(pl.seed), 'easy', 2).solution });
+const results = await Promise.all([a1, a2].map((pl) => call('play/finish', { body: { playId: pl.playId, proof: sol2(pl) } })));
+assert.equal(results.filter((r) => r.statusCode === 200 && r.body.awarded).length, 1, 'só um conta');
+assert.equal((await progressOf()).sudoku.easy, 2);
+assert.equal(await scoreCount('sudoku'), 2);
+// o mesmo desafio é sempre o mesmo puzzle; outro usuário/partida recebe a mesma semente
+const again = await ok('play/start', { body: { game: 'sudoku', tier: 'easy', challenge: 2 } });
+assert.equal(again.seed, a1.seed, 'desafio tem semente fixa');
 
-// --- Memória
-p = await ok('play/start', { body: { game: 'memory', level: 1 } });
-const deck = buildDeck(p.seed, 1);
-const flips = []; const seen = new Set();
-deck.forEach((e, i) => { if (seen.has(e)) return; seen.add(e); flips.push([i, deck.indexOf(e, i + 1)]); });
-await backdate(p.playId, 600);
-assert.equal(await code('play/finish', { body: { playId: p.playId, proof: { flips: flips.slice(1) } } }), 422);
-assert.equal((await ok('play/finish', { body: { playId: p.playId, proof: { flips } } })).points, 152 - 0);
+// --- Memória: libera Medium ao resolver 10 no Easy, e Hard ao resolver 20 no Medium
+for (let n = 1; n <= 9; n++) await solveMemory('easy', n);
+assert.equal((await start('memory', 'medium', 1)).statusCode, 403, 'com 9 resolvidos ainda bloqueado');
+const tenth = await solveMemory('easy', 10);
+assert.equal(tenth.progress.easy, 10);
+assert.equal((await start('memory', 'medium', 1)).statusCode, 200, 'medium liberado com 10');
+assert.equal((await start('memory', 'medium', 2)).statusCode, 403, 'medium também abre em sequência');
+assert.equal((await start('memory', 'hard', 1)).statusCode, 403);
+assert.equal((await start('sudoku', 'medium', 1)).statusCode, 403, 'a liberação é por jogo');
+for (let n = 1; n <= 19; n++) await solveMemory('medium', n);
+assert.equal((await start('memory', 'hard', 1)).statusCode, 403, 'com 19 no medium ainda bloqueado');
+const m20 = await solveMemory('medium', 20);
+assert.equal(m20.progress.medium, 20);
+assert.equal((await start('memory', 'hard', 1)).statusCode, 200, 'hard liberado com 20 no medium');
+const hardRun = await solveMemory('hard', 1);
+assert.ok(hardRun.points > tenth.points, 'hard vale mais pontos que easy');
+assert.equal(await scoreCount('memory'), 10 + 20 + 1);
 
-// --- Hanói (ilegal x legal)
-p = await ok('play/start', { body: { game: 'hanoi', level: 1 } });
-await backdate(p.playId, 600);
-assert.equal(await code('play/finish', { body: { playId: p.playId, proof: { moves: [[0, 2], [0, 2], [0, 2], [0, 1], [0, 1], [0, 1], [0, 1]] } } }), 422);
-const moves = []; const hn = (n, a, b, c) => { if (!n) return; hn(n - 1, a, c, b); moves.push([a, b]); hn(n - 1, c, b, a); };
-hn(disksForLevel(1), 0, 2, 1);
-assert.ok((await ok('play/finish', { body: { playId: p.playId, proof: { moves } } })).points > 0);
+// --- Hanói: clássico (#1) e um desafio embaralhado (#2), resolvendo a partir do estado dado
+const solveHanoi = (puzzle) => {
+  let pegs = puzzle.pegs; const moves = [];
+  const go = (disk, to) => {
+    if (disk === 0) return;
+    const from = pegs.findIndex((peg) => peg.includes(disk));
+    if (from === to) return go(disk - 1, to);
+    go(disk - 1, 3 - from - to);
+    pegs = moveDisk(pegs, from, to); moves.push([from, to]);
+    go(disk - 1, to);
+  };
+  go(puzzle.disks, puzzle.goal);
+  return moves;
+};
+for (const n of [1, 2]) {
+  p = await ok('play/start', { body: { game: 'hanoi', tier: 'easy', challenge: n } });
+  const puzzle = generateHanoi(mulberry32(p.seed), 'easy', n);
+  await backdate(p.playId, 600);
+  assert.equal(await code('play/finish', { body: { playId: p.playId, proof: { moves: [[0, 1]] } } }), 422);
+  const r = await ok('play/finish', { body: { playId: p.playId, proof: { moves: solveHanoi(puzzle) } } });
+  assert.ok(r.awarded && r.points > 0);
+}
 
-// --- Luzes (solução = repetir os toques que geraram o tabuleiro; aqui basta provar que um toque aleatório não vale)
-p = await ok('play/start', { body: { game: 'lights', level: 1 } });
+// --- Luzes (#1 é 3x3: força bruta nos 512 subconjuntos de toques)
+p = await ok('play/start', { body: { game: 'lights', tier: 'easy', challenge: 1 } });
 await backdate(p.playId, 600);
 assert.equal(await code('play/finish', { body: { playId: p.playId, proof: { taps: [[0, 0]] } } }), 422);
-const L = generateLights(mulberry32(p.seed), 1);
-// força bruta no cliente de teste: testa todos os subconjuntos de 3x3
 let solved = null;
 for (let mask = 1; mask < 512 && !solved; mask++) {
   const taps = []; for (let i = 0; i < 9; i++) if (mask & (1 << i)) taps.push([Math.floor(i / 3), i % 3]);
   const r = await call('play/finish', { body: { playId: p.playId, proof: { taps } } });
   if (r.statusCode === 200) solved = r.body;
 }
-assert.ok(solved && solved.points > 0, 'lights resolvido');
+assert.ok(solved && solved.awarded, 'lights resolvido');
 
-// --- Sequências: resposta nunca vem no start
-p = await ok('play/start', { body: { game: 'sequence', level: 1 } });
+// --- Sequências: resposta e semente nunca vêm no start
+p = await ok('play/start', { body: { game: 'sequence', tier: 'easy', challenge: 1 } });
 assert.equal(p.seed, undefined);
 assert.ok(!JSON.stringify(p).includes('answer'));
-const seedRow = (await pg.query('SELECT seed FROM plays WHERE id=$1', [p.playId])).rows[0].seed;
+const sseed = await seedOf(p.playId);
 assert.equal(await code('play/guess', { body: { playId: p.playId, value: 99999 } }), 400);
 for (let round = 0; round < 3; round++) {
-  const puz = generateSequence(mulberry32(sequenceSeed(seedRow, round)), 1);
-  if (round === 0) {
-    const wrong = puz.options.find((o) => o !== puz.answer);
-    assert.equal((await ok('play/guess', { body: { playId: p.playId, value: wrong } })).correct, false);
-  }
+  const puz = generateSequence(mulberry32(sequenceSeed(sseed, round)), 'easy', 1);
+  if (round === 0) assert.equal((await ok('play/guess', { body: { playId: p.playId, value: puz.options.find((o) => o !== puz.answer) } })).correct, false);
   if (round === 2) await backdate(p.playId, 600);
   const r = await ok('play/guess', { body: { playId: p.playId, value: puz.answer } });
   assert.equal(r.correct, true);
-  if (round === 2) { assert.equal(r.done, true); assert.equal(r.points, 102 - 20); }
+  if (round === 2) { assert.equal(r.done, true); assert.equal(r.awarded, true); assert.equal(r.points, 100 + 0 - 20); }
 }
 
-// --- Código secreto: feedback do servidor, código só aparece ao perder
-p = await ok('play/start', { body: { game: 'mastermind', level: 1 } });
+// --- Código Secreto: feedback do servidor; o código só aparece ao perder
+p = await ok('play/start', { body: { game: 'mastermind', tier: 'easy', challenge: 1 } });
 assert.equal(p.seed, undefined);
-const mseed = (await pg.query('SELECT seed FROM plays WHERE id=$1', [p.playId])).rows[0].seed;
-const secret = generateCode(mulberry32(mseed), 1);
-const cfg = configForLevel(1);
-assert.equal(await code('play/guess', { body: { playId: p.playId, guess: [9, 9, 9] } }), 400);
-const wrongGuess = secret.map((c) => (c + 1) % cfg.colors);
-const first = await ok('play/guess', { body: { playId: p.playId, guess: wrongGuess } });
+const cfg = configFor('easy', 1);
+const secret = generateCode(mulberry32(await seedOf(p.playId)), 'easy', 1);
+assert.equal(await code('play/guess', { body: { playId: p.playId, guess: [9, 9, 9, 9] } }), 400);
+const first = await ok('play/guess', { body: { playId: p.playId, guess: secret.map((c) => (c + 1) % cfg.colors) } });
 assert.equal(first.code, undefined);
 await backdate(p.playId, 600);
 const won = await ok('play/guess', { body: { playId: p.playId, guess: secret } });
-assert.equal(won.won, true); assert.ok(won.points > 0);
-// perder revela o código e não pontua
-p = await ok('play/start', { body: { game: 'mastermind', level: 1 } });
-const sd = (await pg.query('SELECT seed FROM plays WHERE id=$1', [p.playId])).rows[0].seed;
-const sec2 = generateCode(mulberry32(sd), 1);
+assert.equal(won.won, true); assert.equal(won.awarded, true); assert.ok(won.points > 0);
+p = await ok('play/start', { body: { game: 'mastermind', tier: 'easy', challenge: 2 } });
+const sec2 = generateCode(mulberry32(await seedOf(p.playId)), 'easy', 2);
 let last;
-for (let i = 0; i < 10; i++) last = await ok('play/guess', { body: { playId: p.playId, guess: sec2.map((c) => (c + 1) % cfg.colors) } });
+for (let i = 0; i < cfg.attempts; i++) last = await ok('play/guess', { body: { playId: p.playId, guess: sec2.map((c) => (c + 1) % cfg.colors) } });
 assert.deepEqual(last.code, sec2); assert.equal(last.won, false);
 assert.equal(await code('play/guess', { body: { playId: p.playId, guess: sec2 } }), 409);
+assert.equal((await progressOf()).mastermind.easy, 1, 'perder não avança');
 
-// --- partida de outro usuário / ranking / progresso
+// --- partida de outro usuário / ranking / progresso por tier
 const anaCookie = cookie; cookie = '';
 await ok('auth/register', { body: { username: 'bia', email: 'bia@x.com', password: 'senha-forte-2', secretWord: 'escola' } });
 assert.equal(await code('play/guess', { body: { playId: p.playId, guess: sec2 } }), 404);
+assert.deepEqual(await progressOf(), {}, 'outro usuário começa do zero');
+assert.equal((await start('memory', 'medium', 1)).statusCode, 403, 'progresso é por usuário');
 cookie = anaCookie;
-const rank = await ok('ranking', { method: 'GET', query: { game: 'sudoku' } });
+const rank = await ok('ranking', { method: 'GET', query: { game: 'memory' } });
 assert.equal(rank.daily[0].username, 'ana');
-assert.ok(Object.keys(await ok('progress', { method: 'GET' })).includes('sudoku'));
+assert.equal(rank.daily[0].solved, 31, 'ranking conta desafios resolvidos (sem repetições)');
+const prog = await progressOf();
+assert.deepEqual(prog.memory, { easy: 10, medium: 20, hard: 1 });
 await ok('auth/logout');
+
+// --- erros de configuração não vazam para o cliente
+const saved = process.env.JWT_SECRET;
+process.env.JWT_SECRET = 'curto';
+const leaked = await call('auth/me', { method: 'GET', headers: { cookie: 'session=x' } });
+assert.equal(leaked.statusCode, 401);
+const cfgErr = await call('auth/register', { body: { username: 'zed', email: 'zed@x.com', password: 'senha-forte-3', secretWord: 'escola' } });
+assert.equal(cfgErr.statusCode, 500);
+assert.ok(!/JWT|SECRET|segredo/i.test(JSON.stringify(cfgErr.body)), `vazou: ${JSON.stringify(cfgErr.body)}`);
+process.env.JWT_SECRET = saved;
+await pg.query(`DELETE FROM users WHERE username='zed'`);
 
 // --- admin criado pelo script (SQL gerado só com hashes) e login pela API
 const { execFileSync } = await import('node:child_process');

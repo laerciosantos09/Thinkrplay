@@ -8,7 +8,7 @@ export interface User {
 export interface Score {
   username: string;
   score: number;
-  level: number;
+  solved: number; // desafios resolvidos no período
   date: string;
 }
 

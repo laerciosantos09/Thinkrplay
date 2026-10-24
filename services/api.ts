@@ -1,4 +1,5 @@
 import { RankingPeriod, Score, User } from '../types';
+import { Tier, TierProgress } from '../lib/tiers';
 
 let onUnauthorized: () => void = () => {};
 export const setUnauthorizedHandler = (fn: () => void) => {
@@ -40,19 +41,23 @@ export const logout = () => request<{ ok: true }>('auth/logout', { body: {} });
 export const recoverPassword = (body: { email: string; secretWord: string; newPassword: string }) =>
   request<{ ok: true }>('auth/recover', { body });
 
-export const fetchProgress = () => request<Record<string, number>>('progress');
+// Desafios resolvidos por jogo e nível.
+export const fetchProgress = () => request<Record<string, Partial<TierProgress>>>('progress');
 export const fetchRanking = (game: string) =>
   request<Record<RankingPeriod, Score[]>>(`ranking?game=${encodeURIComponent(game)}`);
 
 export interface StartedPlay {
   playId: string;
-  level: number;
+  tier: Tier;
+  challenge: number;
+  scored: boolean; // false = desafio já resolvido antes (repetição não pontua)
   seed?: number;
   puzzles?: { shown: number[]; options: number[]; hint: string }[];
 }
-export interface PlayResult { points: number; unlocked: number }
+export interface PlayResult { points: number; awarded: boolean; progress: TierProgress }
 
-export const startPlay = (game: string, level: number) => request<StartedPlay>('play/start', { body: { game, level } });
+export const startPlay = (game: string, tier: Tier, challenge: number) =>
+  request<StartedPlay>('play/start', { body: { game, tier, challenge } });
 export const finishPlay = (playId: string, proof: unknown) => request<PlayResult>('play/finish', { body: { playId, proof } });
 export const guessPlay = <T,>(playId: string, body: Record<string, unknown>) =>
   request<T>('play/guess', { body: { playId, ...body } });

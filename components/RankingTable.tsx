@@ -80,7 +80,7 @@ const RankingTable: React.FC<RankingTableProps> = ({ slug, refreshKey = 0 }) => 
                   </span>
                   <div>
                     <p className="font-bold text-slate-700 text-sm">{s.username}</p>
-                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">Até o nível {s.level}</p>
+                    <p className="text-[10px] text-slate-400 uppercase tracking-wider">{s.solved} {s.solved === 1 ? "desafio" : "desafios"}</p>
                   </div>
                 </div>
                 <div className="text-right">

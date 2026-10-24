@@ -6,7 +6,18 @@ App (PWA) de jogos de raciocínio com login e ranking diário, semanal, mensal e
 - **API:** funções serverless da Vercel em `api/`
 - **Banco:** Postgres no [Neon](https://neon.tech)
 
-Jogos (até 1000 níveis cada, com liberação progressiva): Sudoku, Memória, Sequências, Torre de Hanói, Luzes e Código Secreto.
+Jogos: Sudoku, Memória, Sequências, Torre de Hanói, Luzes e Código Secreto.
+
+## Níveis e desafios
+
+Cada jogo tem 3 níveis (**Easy**, **Medium**, **Hard**) com **500 desafios** cada (1.500 por jogo). Todo mundo começa no Easy.
+
+- **Medium** abre, naquele jogo, ao resolver **10 desafios** do Easy.
+- **Hard** abre, naquele jogo, ao resolver **20 desafios** do Medium.
+- Os desafios de um nível abrem em sequência (resolveu o #7, abre o #8). Os já resolvidos podem ser repetidos, mas **só o primeiro acerto vale pontos**.
+- Os desafios mudam de verdade conforme o nível, não só de tamanho: menos dicas no Sudoku, mais pares na Memória, regras mais complexas nas Sequências, tabuleiros maiores no Luzes, códigos mais longos (e com menos tentativas) no Código Secreto, e na Hanói mais discos em configurações embaralhadas.
+- As regras de liberação ficam em `lib/tiers.ts` (`UNLOCK_RULES`); a dificuldade de cada jogo, no próprio `lib/<jogo>.ts`.
+- Cada desafio tem sempre o mesmo puzzle. A semente vem de um HMAC com `CHALLENGE_SECRET` (ou `JWT_SECRET`), então ninguém consegue pré-calcular os desafios só lendo o código.
 
 > Identidade visual (logo, cores, fontes): veja [`docs/identidade-visual.md`](docs/identidade-visual.md). O nome fica em `config.ts` (`APP_NAME`), `components/Logo.tsx`, `index.html` e `vite.config.ts` (manifest).
 >
@@ -24,14 +35,14 @@ Jogos (até 1000 níveis cada, com liberação progressiva): Sudoku, Memória, S
    - `DATABASE_URL` — string do Neon
    - `JWT_SECRET` — segredo aleatório com **32+ caracteres** (`openssl rand -base64 48`). Nunca reaproveite nem publique.
 
-   Alternativamente, a integração Neon da Vercel (Storage) cria `DATABASE_URL` sozinha.
+   Com a integração Neon da Vercel (Storage), `DATABASE_URL` e `DATABASE_URL_UNPOOLED` são criadas sozinhas. A API usa `DATABASE_URL` (com pool); os scripts de migração e de admin preferem `DATABASE_URL_UNPOOLED`. **`JWT_SECRET` não vem da integração: crie manualmente** (Production e Preview) e faça um novo deploy. Marque as variáveis como *Sensitive* na Vercel.
 4. Faça o deploy. No celular, abra o site e use "Adicionar à tela inicial" para instalar.
 
 ## Scripts do banco (Neon)
 
 | Arquivo | O que faz |
 | --- | --- |
-| `db/schema.sql` | Cria/atualiza todas as tabelas (pode rodar várias vezes). No Neon: SQL Editor → colar → Run. |
+| `db/schema.sql` | Cria/atualiza todas as tabelas (pode rodar várias vezes; migra bancos anteriores aos níveis e remove a antiga tabela `progress`). No Neon: SQL Editor → colar → Run. |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
 | `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas. |
 | `db/drop_all.sql` | Apaga tudo (só desenvolvimento). |
@@ -46,10 +57,16 @@ npm run db:admin:sql
 ```
 Para trocar a senha do admin, rode o script de novo com o mesmo e-mail.
 
+Para rodar os scripts com as variáveis baixadas da Vercel (Node 20+):
+```bash
+node --env-file=.env.local scripts/migrate.mjs
+node --env-file=.env.local scripts/create-admin.mjs
+```
+
 ## Desenvolvimento local
 
 ```bash
-cp .env.example .env        # preencha DATABASE_URL e JWT_SECRET
+npx vercel env pull .env.local   # baixa DATABASE_URL etc. do projeto (ou: cp .env.example .env e preencha)
 npm install
 npx vercel dev              # serve o front e /api juntos
 npm run typecheck && npm test
@@ -60,7 +77,7 @@ npm run typecheck && npm test
 - **Servidor é a autoridade.** Cada partida nasce em `POST /api/play/start` (semente sorteada no servidor, nível precisa estar liberado).
   - *Sudoku, Memória, Hanói, Luzes:* o navegador envia a prova (tabuleiro final / lista de jogadas) e o servidor **refaz a partida** a partir da semente. Os pontos são calculados lá, nunca recebidos do cliente.
   - *Sequências e Código Secreto:* a resposta/código **nunca sai do servidor**; cada palpite é conferido em `POST /api/play/guess`.
-- Cada partida só pontua uma vez (conclusão atômica no banco), expira em 3 h e é recusada se for rápida demais para um humano.
+- Cada partida só pontua uma vez (conclusão atômica no banco), só o primeiro acerto de cada desafio pontua (repetição não rende pontos), expira em 3 h e é recusada se for rápida demais para um humano.
 - Limite de 200 partidas/hora por usuário; bloqueio de 15 min após 8 falhas de login/recuperação (por e-mail e por IP).
 - Sessão em cookie `HttpOnly; Secure; SameSite=Strict` (o JavaScript não enxerga o token), checagem de origem nos POSTs, senhas e palavra secreta com bcrypt.
 - Cabeçalhos de segurança (CSP, HSTS, X-Frame-Options etc.) em `vercel.json`.
@@ -71,7 +88,8 @@ Limite que continua existindo: um programa que *resolve* o Sudoku/Hanói de verd
 
 ```bash
 npm run typecheck
-npm test          # lógica dos jogos + API completa (Postgres em memória, sem precisar do Neon)
+npm test          # lógica dos jogos (500 desafios únicos por nível, dificuldade crescente) + API completa
+                  # (Postgres em memória, sem precisar do Neon)
 ```
 
 `scripts/e2e-server.mjs` sobe o app compilado com a API real e banco em memória para testar no navegador (`npm run build && npx tsx scripts/e2e-server.mjs`, porta 4174).

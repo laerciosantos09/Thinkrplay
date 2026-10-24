@@ -1,8 +1,16 @@
 import { Rng } from './rng.js';
+import { Tier, lerpInt } from './tiers.js';
 
 export type Board = boolean[][]; // true = acesa
 
-export const sizeForLevel = (level: number) => Math.min(7, 3 + Math.floor(level / 10));
+// Tabuleiro cresce com o tier; os primeiros desafios do Easy são 3x3.
+export const sizeFor = (tier: Tier, challenge: number) => {
+  if (tier === 'easy') return challenge <= 6 ? 3 : challenge <= 200 ? 4 : 5;
+  if (tier === 'medium') return challenge <= 250 ? 5 : 6;
+  return challenge <= 250 ? 6 : 7;
+};
+
+const TAPS: Record<Tier, [number, number]> = { easy: [4, 9], medium: [8, 14], hard: [12, 22] };
 
 export const press = (board: Board, r: number, c: number): Board => {
   const next = board.map((row) => [...row]);
@@ -15,10 +23,10 @@ export const press = (board: Board, r: number, c: number): Board => {
 };
 
 // Parte do tabuleiro apagado e aplica toques aleatórios: sempre tem solução.
-export const generateLights = (rng: Rng, level: number) => {
-  const size = sizeForLevel(level);
+export const generateLights = (rng: Rng, tier: Tier, challenge: number) => {
+  const size = sizeFor(tier, challenge);
   let board: Board = Array.from({ length: size }, () => Array(size).fill(false));
-  const taps = Math.min(size * size - 1, 3 + Math.floor(level / 3));
+  const taps = Math.min(size * size - 1, lerpInt(challenge, ...TAPS[tier]));
   const used = new Set<number>();
   while (used.size < taps) used.add(Math.floor(rng() * size * size));
   for (const cell of used) board = press(board, Math.floor(cell / size), cell % size);

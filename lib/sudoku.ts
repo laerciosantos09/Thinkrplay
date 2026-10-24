@@ -1,4 +1,5 @@
 import { Rng, shuffle } from './rng.js';
+import { Tier, lerpInt } from './tiers.js';
 
 export type Grid = number[][]; // 0 = vazio
 
@@ -57,15 +58,16 @@ const fillSolved = (g: Grid, rng: Rng): boolean => {
   return true;
 };
 
-// Dicas diminuem conforme o nível sobe (de 42 a 26).
-export const cluesForLevel = (level: number) => Math.max(26, 42 - Math.floor(level / 8));
+// Menos dicas = mais difícil. Dentro de cada tier a quantidade cai aos poucos.
+const CLUES: Record<Tier, [number, number]> = { easy: [40, 36], medium: [34, 30], hard: [29, 25] };
+export const cluesFor = (tier: Tier, challenge: number) => lerpInt(challenge, ...CLUES[tier]);
 
-export const generateSudoku = (rng: Rng, level: number) => {
+export const generateSudoku = (rng: Rng, tier: Tier, challenge: number) => {
   const solution = emptyGrid();
   fillSolved(solution, rng);
 
   const puzzle = solution.map((row) => [...row]);
-  const target = cluesForLevel(level);
+  const target = cluesFor(tier, challenge);
   let clues = 81;
   for (const idx of shuffle(Array.from({ length: 81 }, (_, i) => i), rng)) {
     if (clues <= target) break;

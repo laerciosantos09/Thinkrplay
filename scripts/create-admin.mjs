@@ -42,7 +42,7 @@ INSERT INTO users (username, email, password_hash, secret_hash, role)
 VALUES (${q(username)}, ${q(email)}, ${q(passwordHash)}, ${q(secretHash)}, 'admin')
 ON CONFLICT (lower(email)) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = 'admin';`);
 } else {
-  const url = process.env.DATABASE_URL;
+  const url = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
   if (!url) throw new Error('Defina DATABASE_URL (ou use --sql para apenas gerar o SQL).');
   const { neon } = await import('@neondatabase/serverless');
   await neon(url).query(upsert, [username, email, passwordHash, secretHash]);

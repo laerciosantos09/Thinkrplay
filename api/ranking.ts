@@ -11,7 +11,7 @@ export default route(['GET'], async (req) => {
   const entries = await Promise.all(
     Object.entries(PERIODS).map(async ([period, unit]) => {
       const rows = await sql`
-        SELECT u.username, SUM(s.points)::int AS score, MAX(s.level)::int AS level,
+        SELECT u.username, SUM(s.points)::int AS score, COUNT(*)::int AS solved,
                MAX(s.created_at) AS date
         FROM scores s JOIN users u ON u.id = s.user_id
         WHERE s.game = ${game}

@@ -1,25 +1,36 @@
 import { useCallback, useEffect, useState } from 'react';
 import { PlayResult, StartedPlay, fetchProgress, finishPlay, guessPlay, startPlay } from './api';
+import {
+  Tier, TierProgress, TIERS, emptyProgress, highestUnlocked, isTierUnlocked, maxChallenge,
+} from '../lib/tiers';
+
+export interface PlayOutcome extends PlayResult {
+  unlockedTier: Tier | null; // nível liberado por esta vitória
+}
 
 // Ciclo de uma partida validada pelo servidor: iniciar -> jogar -> enviar prova/palpites -> pontos.
 export const usePlay = (slug: string) => {
-  const [level, setLevel] = useState(1);
-  const [unlocked, setUnlocked] = useState(1);
+  const [progress, setProgress] = useState<TierProgress>(emptyProgress());
+  const [tier, setTier] = useState<Tier>('easy');
+  const [challenge, setChallengeState] = useState(1);
   const [ready, setReady] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const [play, setPlay] = useState<StartedPlay | null>(null);
-  const [result, setResult] = useState<PlayResult | null>(null);
+  const [result, setResult] = useState<PlayOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rankingKey, setRankingKey] = useState(0);
 
+  // Abre no nível mais alto liberado, no próximo desafio pendente.
   useEffect(() => {
     let alive = true;
     fetchProgress()
-      .then((p) => {
+      .then((all) => {
         if (!alive) return;
-        const next = p[slug] ?? 1;
-        setUnlocked(next);
-        setLevel(next);
+        const p = { ...emptyProgress(), ...(all[slug] ?? {}) };
+        const t = highestUnlocked(p);
+        setProgress(p);
+        setTier(t);
+        setChallengeState(maxChallenge(t, p));
       })
       .catch(() => {})
       .finally(() => alive && setReady(true));
@@ -34,19 +45,23 @@ export const usePlay = (slug: string) => {
     setPlay(null);
     setResult(null);
     setError(null);
-    startPlay(slug, level)
+    startPlay(slug, tier, challenge)
       .then((p) => alive && setPlay(p))
       .catch((e: Error) => alive && setError(e.message));
     return () => {
       alive = false;
     };
-  }, [slug, level, attempt, ready]);
+  }, [slug, tier, challenge, attempt, ready]);
 
-  const applyResult = useCallback((r: PlayResult) => {
-    setResult(r);
-    setUnlocked((u) => Math.max(u, r.unlocked));
-    setRankingKey((k) => k + 1);
-  }, []);
+  const applyResult = useCallback(
+    (r: PlayResult) => {
+      const unlockedTier = TIERS.find((t) => !isTierUnlocked(t, progress) && isTierUnlocked(t, r.progress)) ?? null;
+      setProgress(r.progress);
+      setResult({ ...r, unlockedTier });
+      setRankingKey((k) => k + 1);
+    },
+    [progress],
+  );
 
   const finish = useCallback(
     async (proof: unknown) => {
@@ -60,21 +75,34 @@ export const usePlay = (slug: string) => {
     [play, applyResult],
   );
 
-  // Para jogos com segredo no servidor. Se a resposta trouxer `points`, a partida acabou.
+  // Para jogos com segredo no servidor. Se a resposta trouxer `progress`, a partida acabou.
   const guess = useCallback(
-    async <T extends { points?: number; unlocked?: number }>(body: Record<string, unknown>) => {
+    async <T extends { points?: number; awarded?: boolean; progress?: TierProgress }>(body: Record<string, unknown>) => {
       if (!play) throw new Error('Partida não iniciada.');
       const data = await guessPlay<T>(play.playId, body);
-      if (data.points !== undefined && data.unlocked !== undefined) {
-        applyResult({ points: data.points, unlocked: data.unlocked });
+      if (data.progress && data.points !== undefined && data.awarded !== undefined) {
+        applyResult({ points: data.points, awarded: data.awarded, progress: data.progress });
       }
       return data;
     },
     [play, applyResult],
   );
 
+  const selectTier = (next: Tier) => {
+    if (!isTierUnlocked(next, progress)) return;
+    setTier(next);
+    setChallengeState(maxChallenge(next, progress));
+  };
+
+  const setChallenge = (n: number) => {
+    const limit = maxChallenge(tier, progress);
+    setChallengeState(Math.min(Math.max(1, Math.round(n) || 1), limit));
+  };
+
   return {
-    level, setLevel, unlocked, play, result, error, rankingKey,
+    slug, tier, challenge, progress, play, result, error, rankingKey,
+    nextChallenge: maxChallenge(tier, progress),
+    selectTier, setChallenge,
     restart: () => setAttempt((a) => a + 1),
     finish, guess,
   };

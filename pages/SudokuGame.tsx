@@ -5,8 +5,8 @@ import { canPlace, generateSudoku } from '../lib/sudoku';
 import { mulberry32 } from '../lib/rng';
 
 const Board: React.FC<{ ctl: PlayCtl; seed: number }> = ({ ctl, seed }) => {
-  const { level } = ctl;
-  const { puzzle, solution } = useMemo(() => generateSudoku(mulberry32(seed), level), [seed, level]);
+  const { tier, challenge } = ctl;
+  const { puzzle, solution } = useMemo(() => generateSudoku(mulberry32(seed), tier, challenge), [seed, tier, challenge]);
   const [board, setBoard] = useState<number[][]>(() => puzzle.map((r) => [...r]));
   const [selected, setSelected] = useState<[number, number] | null>(null);
   const done = ctl.result !== null;
@@ -76,7 +76,7 @@ const Board: React.FC<{ ctl: PlayCtl; seed: number }> = ({ ctl, seed }) => {
           </button>
         ))}
       </div>
-      <WinPanel title={`Nível ${level} concluído!`} text="Sudoku resolvido." ctl={ctl} />
+      <WinPanel title={`Desafio ${challenge} concluído!`} text="Sudoku resolvido." ctl={ctl} />
     </>
   );
 };
