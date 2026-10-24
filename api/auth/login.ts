@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { HttpError, sql } from '../_lib/db.js';
 import { clientIp, route, startSession, str } from '../_lib/http.js';
+import { publicUser } from '../_lib/user.js';
 import { assertNotLocked, recordFailure } from '../_lib/limit.js';
 
 // Hash fictício para gastar o mesmo tempo quando o e-mail não existe.
@@ -12,7 +13,7 @@ export default route(['POST'], async (req, res) => {
   const ip = clientIp(req);
   await assertNotLocked(email, ip);
 
-  const rows = await sql`SELECT id, username, email, role, password_hash FROM users WHERE lower(email) = ${email}`;
+  const rows = await sql`SELECT id, username, email, role, created_at, terms_version, token_version, password_hash FROM users WHERE lower(email) = ${email}`;
   const found = rows[0];
   const ok = await bcrypt.compare(password, found?.password_hash ?? DUMMY);
   if (!found || !ok) {
@@ -20,6 +21,6 @@ export default route(['POST'], async (req, res) => {
     throw new HttpError(401, 'E-mail ou senha incorretos.');
   }
 
-  await startSession(req, res, { id: found.id, username: found.username });
-  return { user: { id: found.id, username: found.username, email: found.email, role: found.role } };
+  await startSession(req, res, { id: found.id, version: found.token_version });
+  return { user: publicUser(found) };
 });

@@ -21,6 +21,7 @@ export default route(['POST'], async (req) => {
   }
 
   const passwordHash = await bcrypt.hash(newPassword, 11);
-  await sql`UPDATE users SET password_hash = ${passwordHash} WHERE id = ${found.id}`;
+  // token_version + 1 encerra todas as sessões abertas (quem redefine a senha pode ter perdido o acesso).
+  await sql`UPDATE users SET password_hash = ${passwordHash}, token_version = token_version + 1 WHERE id = ${found.id}`;
   return { ok: true };
 });

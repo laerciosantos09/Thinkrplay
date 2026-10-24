@@ -3,9 +3,13 @@ export interface User {
   username: string;
   email: string;
   role?: 'user' | 'admin';
+  createdAt?: string | null;
+  needsTerms?: boolean; // ainda não aceitou a versão atual dos Termos/Privacidade
 }
 
 export interface Score {
+  position: number;
+  isMe: boolean;
   username: string;
   score: number;
   solved: number; // desafios resolvidos no período

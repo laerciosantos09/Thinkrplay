@@ -1,5 +1,10 @@
--- Thinkrplay: estrutura do banco (Postgres/Neon). Pode ser executado várias vezes sem problema.
--- Neon: SQL Editor > cole este arquivo inteiro > Run. Ou: npm run db:migrate
+-- Thinkrplay: estrutura COMPLETA do banco (Postgres/Neon). GERADO por "npm run db:schema" a partir de db/migrations/.
+-- Não edite aqui: altere ou crie uma migração em db/migrations/ e rode "npm run db:schema".
+-- Pode ser executado várias vezes sem problema. Neon: SQL Editor > cole este arquivo inteiro > Run.
+
+-- ===== 001_base.sql =====
+-- 001 · Base: usuários, pontuações, partidas e tentativas de login.
+-- Pode ser executado várias vezes sem problema. Neon: SQL Editor > cole este arquivo > Run.
 
 CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -22,9 +27,8 @@ CREATE TABLE IF NOT EXISTS scores (
   id bigserial PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   game text NOT NULL,
-  tier text NOT NULL DEFAULT 'easy',
   points integer NOT NULL CHECK (points >= 0),
-  level integer NOT NULL CHECK (level >= 1), -- número do desafio (1..500) dentro do tier
+  level integer NOT NULL CHECK (level >= 1), -- número do desafio dentro do nível
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -32,25 +36,11 @@ CREATE INDEX IF NOT EXISTS scores_game_created_idx ON scores (game, created_at D
 
 CREATE INDEX IF NOT EXISTS scores_user_idx ON scores (user_id);
 
--- Desafios resolvidos por usuário, jogo e nível (easy/medium/hard). Os desafios abrem em sequência (1..500).
-CREATE TABLE IF NOT EXISTS tier_progress (
-  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  game text NOT NULL,
-  tier text NOT NULL CHECK (tier IN ('easy', 'medium', 'hard')),
-  solved integer NOT NULL DEFAULT 0 CHECK (solved BETWEEN 0 AND 500),
-  updated_at timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (user_id, game, tier)
-);
-
--- Modelo antigo (níveis 1..1000 sem tiers), substituído por tier_progress
-DROP TABLE IF EXISTS progress;
-
 CREATE TABLE IF NOT EXISTS plays (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   game text NOT NULL,
-  tier text NOT NULL DEFAULT 'easy',
-  level integer NOT NULL, -- número do desafio (1..500) dentro do tier
+  level integer NOT NULL, -- número do desafio dentro do nível
   seed integer NOT NULL,
   state jsonb NOT NULL DEFAULT '{}',
   started_at timestamptz NOT NULL DEFAULT now(),
@@ -59,11 +49,6 @@ CREATE TABLE IF NOT EXISTS plays (
 );
 
 CREATE INDEX IF NOT EXISTS plays_user_started_idx ON plays (user_id, started_at DESC);
-
--- Bancos criados antes dos níveis (easy/medium/hard)
-ALTER TABLE scores ADD COLUMN IF NOT EXISTS tier text NOT NULL DEFAULT 'easy';
-
-ALTER TABLE plays ADD COLUMN IF NOT EXISTS tier text NOT NULL DEFAULT 'easy';
 
 CREATE TABLE IF NOT EXISTS auth_attempts (
   id bigserial PRIMARY KEY,
@@ -76,10 +61,50 @@ CREATE INDEX IF NOT EXISTS auth_attempts_email_idx ON auth_attempts (email, at D
 
 CREATE INDEX IF NOT EXISTS auth_attempts_ip_idx ON auth_attempts (ip, at DESC);
 
--- Jogos habilitados/desabilitados pelo administrador. Jogo sem linha aqui conta como habilitado.
+-- ===== 002_levels_tiers.sql =====
+-- 002 · Níveis Easy/Medium/Hard (500 desafios por jogo e nível).
+-- Acrescenta a coluna tier em scores e plays e cria tier_progress (desafios resolvidos por usuário, jogo e nível).
+-- ATENÇÃO: remove a tabela antiga "progress" (modelo de níveis 1..1000 sem tiers); quem tinha progresso nela volta ao Easy.
+-- Pode ser executado várias vezes sem problema.
+
+ALTER TABLE scores ADD COLUMN IF NOT EXISTS tier text NOT NULL DEFAULT 'easy';
+
+ALTER TABLE plays ADD COLUMN IF NOT EXISTS tier text NOT NULL DEFAULT 'easy';
+
+-- Os desafios de cada nível abrem em sequência (1..500); "solved" é quantos já foram resolvidos.
+CREATE TABLE IF NOT EXISTS tier_progress (
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game text NOT NULL,
+  tier text NOT NULL CHECK (tier IN ('easy', 'medium', 'hard')),
+  solved integer NOT NULL DEFAULT 0 CHECK (solved BETWEEN 0 AND 500),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, game, tier)
+);
+
+DROP TABLE IF EXISTS progress;
+
+-- ===== 003_game_settings.sql =====
+-- 003 · Configurações do administrador: jogos habilitados/desabilitados.
+-- Jogo sem linha aqui conta como habilitado. Pode ser executado várias vezes sem problema.
+
 CREATE TABLE IF NOT EXISTS game_settings (
   game text PRIMARY KEY,
   enabled boolean NOT NULL DEFAULT true,
   updated_at timestamptz NOT NULL DEFAULT now(),
   updated_by uuid REFERENCES users(id) ON DELETE SET NULL
 );
+
+-- ===== 004_profile_terms_rankings.sql =====
+-- 004 · Perfil, Termos/Privacidade e ranking geral.
+--  - token_version: sobe ao trocar/redefinir a senha e encerra as outras sessões
+--  - terms_version / terms_accepted_at: aceite dos Termos de Uso e da Política de Privacidade
+--  - índice por data para o ranking geral (todos os jogos)
+-- Pode ser executado várias vezes sem problema.
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version integer NOT NULL DEFAULT 0;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version text;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at timestamptz;
+
+CREATE INDEX IF NOT EXISTS scores_created_idx ON scores (created_at DESC);
