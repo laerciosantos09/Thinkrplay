@@ -28,13 +28,14 @@ export default route(['GET'], async (req) => {
           FROM agg
         )
         SELECT r.position::int AS position, u.username, r.score, r.solved, r.last_at AS date,
-               (r.user_id = ${me}::uuid) IS TRUE AS is_me
+               (r.user_id = ${me}::uuid) IS TRUE AS is_me,
+               EXISTS (SELECT 1 FROM subscriptions sb WHERE sb.user_id = r.user_id AND sb.status IN ('active', 'trialing')) AS premium
         FROM ranked r JOIN users u ON u.id = r.user_id
         WHERE r.position <= ${TOP} OR r.user_id = ${me}::uuid
         ORDER BY r.position`;
       return [
         period,
-        rows.map((r) => ({ position: r.position, username: r.username, score: r.score, solved: r.solved, date: r.date, isMe: r.is_me })),
+        rows.map((r) => ({ position: r.position, username: r.username, score: r.score, solved: r.solved, date: r.date, isMe: r.is_me, premium: r.premium })),
       ] as const;
     }),
   );

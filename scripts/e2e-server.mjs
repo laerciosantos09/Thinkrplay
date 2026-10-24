@@ -20,9 +20,9 @@ globalThis.__sql = async (strings, ...values) =>
 globalThis.__pg = pg;
 writeFileSync(path.join(out, 'db-shim.js'), `export const sql = (...a) => globalThis.__sql(...a);
 export const assertDb = () => {};
-export class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }`);
+export class HttpError extends Error { constructor(status, message, expose = false, extra) { super(message); this.status = status; this.expose = expose; this.extra = extra; } }`);
 
-const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'auth/logout', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'games'];
+const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'billing', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings'];
 await build({
   entryPoints: Object.fromEntries(names.map((n) => [n, path.join(root, 'api', `${n}.ts`)])),
   outdir: out, bundle: true, format: 'esm', platform: 'node', packages: 'external',
@@ -31,6 +31,35 @@ await build({
 process.env.JWT_SECRET = 'x'.repeat(40);
 const handlers = {};
 for (const n of names) handlers[n] = (await import(pathToFileURL(path.join(out, `${n}.js`)).href)).default;
+
+// Stripe simulado: páginas de pagamento/portal falsas que disparam webhooks assinados de verdade.
+process.env.STRIPE_SECRET_KEY ??= 'sk_test_e2e'; process.env.STRIPE_PRICE_ID ??= 'price_e2e'; process.env.STRIPE_WEBHOOK_SECRET ??= 'whsec_e2e';
+const { createHmac } = await import('node:crypto');
+const { Readable } = await import('node:stream');
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, init = {}) => {
+  if (!String(url).startsWith('https://api.stripe.com/v1')) return realFetch(url, init);
+  const path = String(url).replace('https://api.stripe.com/v1', '');
+  const body = Object.fromEntries(new URLSearchParams(init.body ?? ''));
+  const json = (data) => ({ ok: true, status: 200, json: async () => data });
+  if (path === '/customers') return json({ id: 'cus_' + body['metadata[user_id]'].slice(0, 8) });
+  if (path === '/checkout/sessions') return json({ url: `http://localhost:4174/__pay?customer=${body.customer}&user=${body.client_reference_id}` });
+  if (path === '/billing_portal/sessions') return json({ url: `http://localhost:4174/__portal?customer=${body.customer}` });
+  return json({ id: 'sub_e2e', status: 'canceled' });
+};
+let eventCounter = 0;
+const sendWebhook = async (customer, user, over) => {
+  const created = Math.floor(Date.now() / 1000) + eventCounter;
+  const event = { id: `evt_e2e_${++eventCounter}`, type: 'customer.subscription.updated', created,
+    data: { object: { id: 'sub_e2e', customer, status: 'active', cancel_at_period_end: false, metadata: { user_id: user },
+      items: { data: [{ price: { id: 'price_e2e' }, current_period_end: created + 86400 * 30 }] }, ...over } } };
+  const raw = JSON.stringify(event);
+  const sig = `t=${created},v1=${createHmac('sha256', process.env.STRIPE_WEBHOOK_SECRET).update(`${created}.${raw}`).digest('hex')}`;
+  const req = Object.assign(Readable.from([Buffer.from(raw)]), { method: 'POST', headers: { 'stripe-signature': sig }, query: {}, socket: {} });
+  const res = { statusCode: 200, setHeader() {}, status(c) { this.statusCode = c; return this; }, json() { return this; } };
+  await handlers.billing(req, res);
+  return res.statusCode;
+};
 
 const vercel = JSON.parse(readFileSync(path.join(root, 'vercel.json'), 'utf8'));
 const secHeaders = Object.fromEntries(vercel.headers[0].headers.map((h) => [h.key, h.value]));
@@ -41,6 +70,19 @@ http.createServer(async (req, res) => {
   if (url.pathname === '/__backdate') { // só para o teste: envelhece partidas abertas
     await pg.query(`UPDATE plays SET started_at = now() - interval '600 seconds' WHERE finished_at IS NULL`);
     return res.end('ok');
+  }
+  if (url.pathname === '/__energy') { // só para teste: "envelhece" o relógio de recarga (segundos)
+    await pg.query(`UPDATE play_energy SET refilled_at = now() - ($1 || ' seconds')::interval`, [url.searchParams.get('ago')]);
+    return res.end('ok');
+  }
+  if (url.pathname === '/__pay') { // "pagou": ativa a assinatura e volta para o app
+    await sendWebhook(url.searchParams.get('customer'), url.searchParams.get('user'), {});
+    return res.writeHead(302, { Location: '/?premium=success' }).end();
+  }
+  if (url.pathname === '/__portal') { // "cancelou" no portal: agenda o fim da assinatura e volta
+    const u = (await pg.query('SELECT user_id FROM subscriptions WHERE stripe_customer_id = $1', [url.searchParams.get('customer')])).rows[0]?.user_id;
+    await sendWebhook(url.searchParams.get('customer'), u, { cancel_at_period_end: true });
+    return res.writeHead(302, { Location: '/' }).end();
   }
   if (url.pathname.startsWith('/api/')) {
     const chunks = []; for await (const c of req) chunks.push(c);

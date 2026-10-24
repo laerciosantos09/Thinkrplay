@@ -1,8 +1,18 @@
 import path from 'path';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+// Gera /ads.txt (exigido pelo AdSense) a partir de VITE_ADSENSE_CLIENT; sem a variável, o arquivo não é criado.
+const adsTxt = (client?: string): Plugin => ({
+  name: 'thinkrplay-ads-txt',
+  generateBundle() {
+    if (!client) return;
+    const publisher = client.replace(/^ca-/, '');
+    this.emitFile({ type: 'asset', fileName: 'ads.txt', source: `google.com, ${publisher}, DIRECT, f08c47fec0942fa0\n` });
+  },
+});
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), 'VITE_');
@@ -19,6 +29,7 @@ export default defineConfig(({ mode }) => {
   plugins: [
     react(),
     tailwindcss(),
+    adsTxt(env.VITE_ADSENSE_CLIENT),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg', 'mark.svg', 'apple-touch-icon.png', 'og-image.png'],
@@ -41,7 +52,7 @@ export default defineConfig(({ mode }) => {
       },
       workbox: {
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/ads\.txt$/],
         // As chamadas à API nunca vêm do cache.
         runtimeCaching: [
           { urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, handler: 'StaleWhileRevalidate', options: { cacheName: 'fonts' } },

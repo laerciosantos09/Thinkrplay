@@ -8,3 +8,6 @@ DELETE FROM plays WHERE finished_at IS NOT NULL AND started_at < now() - interva
 
 -- Tentativas de login antigas
 DELETE FROM auth_attempts WHERE at < now() - interval '1 day';
+
+-- Eventos do Stripe já processados há mais de 90 dias
+DELETE FROM stripe_events WHERE received_at < now() - interval '90 days';

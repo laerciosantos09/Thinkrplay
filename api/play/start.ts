@@ -1,6 +1,8 @@
 import { HttpError, sql } from '../_lib/db.js';
 import { GAME_SLUGS, requireSession, route } from '../_lib/http.js';
-import { assertGameEnabled } from '../_lib/games.js';
+import { assertGameEnabled, isAppSettingEnabled } from '../_lib/games.js';
+import { consumeEnergy, energyState, refundEnergy } from '../_lib/energy.js';
+import { getSubscription, isSubscriptionActive } from '../_lib/premium.js';
 import { loadProgress } from '../_lib/play.js';
 import { challengeSeed } from '../_lib/seed.js';
 import { generateSequence } from '../../lib/sequence.js';
@@ -32,13 +34,32 @@ export default route(['POST'], async (req) => {
   if (challenge > maxChallenge(tier, progress)) throw new HttpError(403, 'Desafio ainda bloqueado.');
   if (recent[0].n >= MAX_STARTS_PER_HOUR) throw new HttpError(429, 'Muitas partidas em pouco tempo. Faça uma pausa.');
 
+  // Limite de partidas (quando ligado pelo admin): iniciar gasta 1; sem partidas, recusa e informa quando volta a próxima.
+  let energyOn = false;
+  let premium = false;
+  if (await isAppSettingEnabled('energy')) {
+    energyOn = true;
+    premium = isSubscriptionActive(await getSubscription(session.id));
+    if (!(await consumeEnergy(session.id, premium))) {
+      const energy = await energyState(session.id, premium);
+      throw new HttpError(429, 'Você ficou sem partidas por agora. Aguarde a recarga para jogar de novo.', false, { energy });
+    }
+  }
+
   // Código Secreto: a semente é da FAIXA de desafios (permite códigos sem repetição); os demais, do desafio.
   const seed = challengeSeed(game, tier, game === 'mastermind' ? blockStart(tier, challenge) : challenge);
-  const rows = await sql`
-    INSERT INTO plays (user_id, game, tier, level, seed) VALUES (${session.id}, ${game}, ${tier}, ${challenge}, ${seed})
-    RETURNING id`;
-  const playId = rows[0].id as string;
-  const base = { playId, tier, challenge, scored: challenge === progress[tier] + 1 };
+  let playId: string;
+  try {
+    const rows = await sql`
+      INSERT INTO plays (user_id, game, tier, level, seed) VALUES (${session.id}, ${game}, ${tier}, ${challenge}, ${seed})
+      RETURNING id`;
+    playId = rows[0].id as string;
+  } catch (err) {
+    if (energyOn) await refundEnergy(session.id, premium).catch(() => {}); // a partida não existiu: devolve a partida gasta
+    throw err;
+  }
+  const energy = energyOn ? await energyState(session.id, premium) : null;
+  const base = { playId, tier, challenge, scored: challenge === progress[tier] + 1, energy };
 
   // Jogos com segredo (sequence, mastermind) nunca expõem a semente ao cliente.
   if (game === 'sequence') {

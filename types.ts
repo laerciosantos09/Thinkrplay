@@ -10,6 +10,7 @@ export interface User {
 export interface Score {
   position: number;
   isMe: boolean;
+  premium?: boolean; // assinante Premium (selo)
   username: string;
   score: number;
   solved: number; // desafios resolvidos no período

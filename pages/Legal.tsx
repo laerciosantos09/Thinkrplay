@@ -32,9 +32,9 @@ const LegalPage: React.FC<{ doc: LegalDocument }> = ({ doc }) => {
         <p className="text-sm text-slate-500 mb-8">Última atualização: {doc.updated}</p>
 
         <div className="space-y-6">
-          {doc.sections.map((section) => (
+          {doc.sections.map((section, i) => (
             <section key={section.title}>
-              <h2 className="text-base font-semibold mb-2">{section.title}</h2>
+              <h2 className="text-base font-semibold mb-2">{i + 1}. {section.title}</h2>
               <p className="text-sm text-slate-700 leading-relaxed">{section.text}</p>
             </section>
           ))}

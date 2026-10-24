@@ -117,6 +117,7 @@ const RankingTable: React.FC<RankingTableProps> = ({ slug, refreshKey = 0 }) => 
                       <div className="min-w-0">
                         <p className="font-bold text-slate-700 text-sm truncate">
                           {s.username}
+                          {s.premium && <span title="Assinante Premium" aria-label="Premium" className="ml-1">⭐</span>}
                           {s.isMe && <span className="ml-1.5 text-[10px] font-black uppercase text-brand-700">você</span>}
                         </p>
                         <p className="text-[10px] text-slate-400 uppercase tracking-wider">

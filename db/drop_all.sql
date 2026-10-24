@@ -1,4 +1,8 @@
 -- ATENÇÃO: APAGA TODOS OS DADOS (usuários, pontuações, progresso). Use só em desenvolvimento.
+DROP TABLE IF EXISTS play_energy CASCADE;
+DROP TABLE IF EXISTS stripe_events CASCADE;
+DROP TABLE IF EXISTS subscriptions CASCADE;
+DROP TABLE IF EXISTS app_settings CASCADE;
 DROP TABLE IF EXISTS game_settings CASCADE;
 DROP TABLE IF EXISTS auth_attempts CASCADE;
 DROP TABLE IF EXISTS plays CASCADE;

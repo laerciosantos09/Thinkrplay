@@ -7,7 +7,7 @@ export const setUnauthorizedHandler = (fn: () => void) => {
 };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(public status: number, message: string, public data: Record<string, any> = {}) {
     super(message);
   }
 }
@@ -28,7 +28,7 @@ const request = async <T,>(path: string, init: { method?: string; body?: unknown
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith('auth/')) onUnauthorized();
-    throw new ApiError(res.status, data.error ?? 'Algo deu errado.');
+    throw new ApiError(res.status, data.error ?? 'Algo deu errado.', data);
   }
   return data as T;
 };
@@ -45,15 +45,50 @@ export const changePassword = (currentPassword: string, newPassword: string) =>
 export const deleteAccount = (password: string, confirm: string) =>
   request<{ ok: true }>('profile', { body: { action: 'delete', password, confirm } });
 export const acceptTerms = () => request<{ user: User }>('profile', { body: { action: 'accept_terms' } });
-export const logout = () => request<{ ok: true }>('auth/logout', { body: {} });
+export const logout = () => request<{ ok: true }>('profile', { body: { action: 'logout' } });
 export const recoverPassword = (body: { email: string; secretWord: string; newPassword: string }) =>
   request<{ ok: true }>('auth/recover', { body });
 
 // Desafios resolvidos por jogo e nível.
-// Jogos habilitados (qualquer usuário logado lê; só admin altera).
-export const fetchGames = () => request<{ games: GameSetting[] }>('games');
-export const setGameEnabled = (game: string, enabled: boolean) =>
-  request<{ games: GameSetting[] }>('games', { body: { game, enabled } });
+// Configurações do app: jogos habilitados e anúncios (qualquer usuário logado lê; só admin altera).
+export interface PremiumState {
+  available: boolean; // dá para assinar agora (ligado pelo admin e Stripe configurado)
+  active: boolean; // este usuário é Premium
+  status: string | null;
+  renewsAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  // só para administradores:
+  enabled?: boolean;
+  configured?: boolean;
+  subscribers?: number;
+}
+// Limite de partidas em sequência ("energia"): estoque que recarrega com o tempo.
+export interface EnergyPlan { capacity: number; intervalSec: number }
+export interface EnergyState extends EnergyPlan {
+  charges: number; // partidas disponíveis agora
+  nextRefillAt: string | null; // quando volta a próxima (null = estoque cheio)
+}
+export interface EnergySettings {
+  enabled: boolean;
+  free: EnergyPlan;
+  premium: EnergyPlan;
+  state: EnergyState | null; // deste usuário (só quando o limite está ligado)
+}
+export interface AppSettings {
+  games: GameSetting[];
+  ads: { enabled: boolean };
+  premium: PremiumState;
+  energy: EnergySettings;
+}
+export const fetchSettings = () => request<AppSettings>('settings');
+export const setGameEnabled = (game: string, enabled: boolean) => request<AppSettings>('settings', { body: { game, enabled } });
+export const setAdsEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'ads', enabled } });
+export const setEnergyEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'energy', enabled } });
+export const setPremiumEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'premium', enabled } });
+
+// Premium: abre o pagamento / o portal de assinatura do Stripe (devolvem a URL para redirecionar).
+export const startCheckout = () => request<{ url: string }>('billing', { body: { action: 'checkout' } });
+export const openBillingPortal = () => request<{ url: string }>('billing', { body: { action: 'portal' } });
 
 export const fetchProgress = () => request<Record<string, Partial<TierProgress>>>('progress');
 export const fetchRanking = (game: string) =>
@@ -64,6 +99,7 @@ export interface StartedPlay {
   tier: Tier;
   challenge: number;
   scored: boolean; // false = desafio já resolvido antes (repetição não pontua)
+  energy?: EnergyState | null; // estoque de partidas depois de gastar esta (se o limite estiver ligado)
   seed?: number;
   puzzles?: { shown: number[]; options: number[]; hint: string }[];
 }
