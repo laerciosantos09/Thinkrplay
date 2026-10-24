@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { GAMES, TIER_LABELS } from '../config';
 import { fetchProgress } from '../services/api';
-import { CHALLENGES_PER_TIER, TIERS, TierProgress, emptyProgress, isTierUnlocked } from '../lib/tiers';
+import { CHALLENGES_PER_TIER, TIERS, TierProgress, emptyProgress, isTierUnlocked, unlockStatus } from '../lib/tiers';
 
 interface DashboardProps {
   onSelectGame: (slug: string) => void;
@@ -54,7 +54,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectGame, onGoToRanking, isEn
               return (
                 <span key={t} className="inline-flex items-center gap-1">
                   <span className={`w-2 h-2 rounded-full ${unlocked ? TIER_DOT[t] : 'bg-slate-300'}`} />
-                  {TIER_LABELS[t]} {unlocked ? `${p[t]}/${CHALLENGES_PER_TIER}` : '🔒'}
+                  {TIER_LABELS[t]} {unlocked ? `${p[t]}/${CHALLENGES_PER_TIER}` : `🔒 faltam ${unlockStatus(t, p)!.remaining}`}
                 </span>
               );
             })}
