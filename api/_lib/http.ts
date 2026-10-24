@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { SignJWT, jwtVerify } from 'jose';
-import { HttpError, assertDb } from './db.js';
+import { HttpError, assertDb, sql } from './db.js';
 
 export interface Session {
   id: string;
@@ -50,6 +50,14 @@ export const requireSession = async (req: VercelRequest): Promise<Session> => {
   } catch {
     throw new HttpError(401, 'Sessão expirada. Entre novamente.');
   }
+};
+
+// O perfil é conferido no banco a cada chamada (não no token), então rebaixar um admin vale na hora.
+export const requireAdmin = async (req: VercelRequest): Promise<Session> => {
+  const session = await requireSession(req);
+  const rows = await sql`SELECT role FROM users WHERE id = ${session.id}`;
+  if (rows[0]?.role !== 'admin') throw new HttpError(403, 'Acesso restrito a administradores.');
+  return session;
 };
 
 export const clientIp = (req: VercelRequest) =>

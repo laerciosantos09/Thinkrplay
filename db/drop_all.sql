@@ -1,4 +1,5 @@
 -- ATENÇÃO: APAGA TODOS OS DADOS (usuários, pontuações, progresso). Use só em desenvolvimento.
+DROP TABLE IF EXISTS game_settings CASCADE;
 DROP TABLE IF EXISTS auth_attempts CASCADE;
 DROP TABLE IF EXISTS plays CASCADE;
 DROP TABLE IF EXISTS tier_progress CASCADE;

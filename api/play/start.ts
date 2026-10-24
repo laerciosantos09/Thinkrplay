@@ -1,5 +1,6 @@
 import { HttpError, sql } from '../_lib/db.js';
 import { GAME_SLUGS, requireSession, route } from '../_lib/http.js';
+import { assertGameEnabled } from '../_lib/games.js';
 import { loadProgress } from '../_lib/play.js';
 import { challengeSeed } from '../_lib/seed.js';
 import { generateSequence } from '../../lib/sequence.js';
@@ -19,6 +20,7 @@ export default route(['POST'], async (req) => {
     throw new HttpError(400, 'Desafio inválido.');
   }
 
+  await assertGameEnabled(game);
   const [progress, recent] = await Promise.all([
     loadProgress(session.id, game),
     sql`SELECT count(*)::int AS n FROM plays WHERE user_id = ${session.id} AND started_at > now() - interval '1 hour'`,

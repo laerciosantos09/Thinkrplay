@@ -22,6 +22,32 @@ export const isTierUnlocked = (tier: Tier, progress: TierProgress) => {
   return !rule || progress[rule.from] >= rule.needed;
 };
 
+export interface UnlockStatus {
+  from: Tier; // nível em que os desafios precisam ser resolvidos
+  needed: number;
+  solved: number; // desafios contados (no máximo `needed`)
+  remaining: number; // quantos faltam para liberar
+  unlocked: boolean;
+}
+
+// Situação de liberação de um nível (null para o Easy, que já começa liberado).
+export const unlockStatus = (tier: Tier, progress: TierProgress): UnlockStatus | null => {
+  const rule = UNLOCK_RULES[tier];
+  if (!rule) return null;
+  const solved = progress[rule.from];
+  return {
+    from: rule.from,
+    needed: rule.needed,
+    solved: Math.min(solved, rule.needed),
+    remaining: Math.max(0, rule.needed - solved),
+    unlocked: solved >= rule.needed,
+  };
+};
+
+// Próximo nível ainda bloqueado (o que o jogador está tentando liberar) ou null se todos estão liberados.
+export const nextLockedTier = (progress: TierProgress): Tier | null =>
+  TIERS.find((t) => !isTierUnlocked(t, progress)) ?? null;
+
 // Os desafios de um tier abrem em sequência: o próximo é sempre (resolvidos + 1).
 export const maxChallenge = (tier: Tier, progress: TierProgress) =>
   Math.min(CHALLENGES_PER_TIER, progress[tier] + 1);

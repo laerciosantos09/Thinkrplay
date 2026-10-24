@@ -8,9 +8,10 @@ import HanoiGame from './pages/HanoiGame';
 import LightsGame from './pages/LightsGame';
 import MastermindGame from './pages/MastermindGame';
 import GlobalRanking from './pages/GlobalRanking';
+import AdminSettings from './pages/AdminSettings';
 import Navbar from './components/Navbar';
-import { User } from './types';
-import { fetchMe, logout as apiLogout, setUnauthorizedHandler } from './services/api';
+import { GameSetting, User } from './types';
+import { fetchGames, fetchMe, logout as apiLogout, setUnauthorizedHandler } from './services/api';
 
 const GAME_PAGES: Record<string, React.FC<{ onBack: () => void }>> = {
   sudoku: SudokuGame,
@@ -25,6 +26,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
   const [page, setPage] = useState('dashboard');
+  const [games, setGames] = useState<GameSetting[] | null>(null);
 
   const clear = useCallback(() => {
     setUser(null);
@@ -46,6 +48,17 @@ const App: React.FC = () => {
       .finally(() => setChecking(false));
   }, []);
 
+  // Jogos habilitados: recarrega ao entrar e a cada troca de tela (o admin pode ter mudado algo).
+  useEffect(() => {
+    if (!user) return;
+    fetchGames()
+      .then((r) => setGames(r.games))
+      .catch(() => setGames((g) => g ?? [])); // sem resposta: o servidor continua barrando jogo desativado
+  }, [user, page]);
+
+  // Jogo sem informação conta como habilitado.
+  const isEnabled = (slug: string) => games?.find((g) => g.slug === slug)?.enabled !== false;
+
   if (checking) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-ink-900">
@@ -59,18 +72,22 @@ const App: React.FC = () => {
   }
 
   const home = () => setPage('dashboard');
+  const isAdmin = user.role === 'admin';
   const Game = GAME_PAGES[page];
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Navbar user={user} onLogout={logout} onHome={home} onRanking={() => setPage('ranking')} />
+      <Navbar user={user} onLogout={logout} onHome={home} onRanking={() => setPage('ranking')}
+        onSettings={isAdmin ? () => setPage('settings') : undefined} />
       <main className="container mx-auto px-4 py-6 sm:py-8">
-        {Game ? (
+        {Game && isEnabled(page) ? (
           <Game key={page} onBack={home} />
         ) : page === 'ranking' ? (
-          <GlobalRanking onBack={home} />
+          <GlobalRanking onBack={home} isEnabled={isEnabled} />
+        ) : page === 'settings' && isAdmin ? (
+          <AdminSettings games={games ?? []} onChange={setGames} onBack={home} />
         ) : (
-          <Dashboard onSelectGame={setPage} onGoToRanking={() => setPage('ranking')} />
+          <Dashboard onSelectGame={setPage} onGoToRanking={() => setPage('ranking')} isEnabled={isEnabled} loading={games === null} />
         )}
       </main>
     </div>

@@ -75,3 +75,11 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
 CREATE INDEX IF NOT EXISTS auth_attempts_email_idx ON auth_attempts (email, at DESC);
 
 CREATE INDEX IF NOT EXISTS auth_attempts_ip_idx ON auth_attempts (ip, at DESC);
+
+-- Jogos habilitados/desabilitados pelo administrador. Jogo sem linha aqui conta como habilitado.
+CREATE TABLE IF NOT EXISTS game_settings (
+  game text PRIMARY KEY,
+  enabled boolean NOT NULL DEFAULT true,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  updated_by uuid REFERENCES users(id) ON DELETE SET NULL
+);

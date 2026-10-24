@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { GAMES, TIER_LABELS } from '../config';
 import { fetchProgress } from '../services/api';
-import { CHALLENGES_PER_TIER, TIERS, TierProgress, emptyProgress, isTierUnlocked } from '../lib/tiers';
+import { CHALLENGES_PER_TIER, TIERS, TierProgress, emptyProgress, isTierUnlocked, unlockStatus } from '../lib/tiers';
 
 interface DashboardProps {
   onSelectGame: (slug: string) => void;
   onGoToRanking: () => void;
+  isEnabled: (slug: string) => boolean;
+  loading: boolean;
 }
 
 const TIER_DOT: Record<string, string> = { easy: 'bg-mint-400', medium: 'bg-amber-400', hard: 'bg-rose-500' };
 
-const Dashboard: React.FC<DashboardProps> = ({ onSelectGame, onGoToRanking }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onSelectGame, onGoToRanking, isEnabled, loading }) => {
+  const visible = GAMES.filter((g) => isEnabled(g.slug));
   const [progress, setProgress] = useState<Record<string, Partial<TierProgress>>>({});
   useEffect(() => {
     fetchProgress().then(setProgress).catch(() => {});
@@ -29,7 +32,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectGame, onGoToRanking }) =>
     </header>
 
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-8">
-      {GAMES.map((game) => (
+      {loading ? (
+        <p className="col-span-full text-center text-slate-400 py-16">Carregando jogos...</p>
+      ) : visible.length === 0 ? (
+        <p className="col-span-full text-center text-slate-500 py-16">Nenhum jogo disponível no momento. Volte em instantes!</p>
+      ) : visible.map((game) => (
         <button
           key={game.id}
           onClick={() => onSelectGame(game.slug)}
@@ -47,7 +54,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onSelectGame, onGoToRanking }) =>
               return (
                 <span key={t} className="inline-flex items-center gap-1">
                   <span className={`w-2 h-2 rounded-full ${unlocked ? TIER_DOT[t] : 'bg-slate-300'}`} />
-                  {TIER_LABELS[t]} {unlocked ? `${p[t]}/${CHALLENGES_PER_TIER}` : '🔒'}
+                  {TIER_LABELS[t]} {unlocked ? `${p[t]}/${CHALLENGES_PER_TIER}` : `🔒 faltam ${unlockStatus(t, p)!.remaining}`}
                 </span>
               );
             })}

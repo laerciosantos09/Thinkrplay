@@ -7,7 +7,9 @@ import { buildDeck, pairsFor } from '../lib/memory.js';
 import { generateHanoi, moveDisk, isGoal } from '../lib/hanoi.js';
 import { mulberry32, seedFor } from '../lib/rng.js';
 import { SEQUENCE_ROUNDS, sequenceSeed } from '../lib/rounds.js';
-import { CHALLENGES_PER_TIER, TIERS, Tier, emptyProgress, highestUnlocked, isTierUnlocked, maxChallenge } from '../lib/tiers.js';
+import {
+  CHALLENGES_PER_TIER, TIERS, Tier, emptyProgress, highestUnlocked, isTierUnlocked, maxChallenge, nextLockedTier, unlockStatus,
+} from '../lib/tiers.js';
 
 const rng = (game: string, tier: Tier, n: number) => mulberry32(seedFor(`${game}:${tier}`, n));
 const all = (fn: (tier: Tier, n: number) => void) => {
@@ -26,6 +28,18 @@ p.medium = 20; assert.equal(isTierUnlocked('hard', p), true);
 assert.equal(highestUnlocked(p), 'hard');
 assert.equal(maxChallenge('easy', { ...p, easy: 499 }), 500);
 assert.equal(maxChallenge('easy', { ...p, easy: 500 }), 500, 'teto de 500 desafios');
+
+// --- contador de quanto falta para liberar o próximo nível
+const c = emptyProgress();
+assert.equal(unlockStatus('easy', c), null, 'easy já começa liberado');
+assert.deepEqual(unlockStatus('medium', c), { from: 'easy', needed: 10, solved: 0, remaining: 10, unlocked: false });
+assert.equal(nextLockedTier(c), 'medium');
+c.easy = 7; assert.equal(unlockStatus('medium', c)!.remaining, 3);
+c.easy = 10; assert.deepEqual(unlockStatus('medium', c), { from: 'easy', needed: 10, solved: 10, remaining: 0, unlocked: true });
+assert.equal(nextLockedTier(c), 'hard', 'com o medium liberado, o próximo é o hard');
+c.medium = 5; assert.equal(unlockStatus('hard', c)!.remaining, 15);
+c.easy = 300; assert.equal(unlockStatus('medium', c)!.solved, 10, 'contador não passa do necessário');
+c.medium = 20; assert.equal(nextLockedTier(c), null, 'todos liberados');
 
 // --- Sudoku: solução única, determinístico, dicas por tier (amostra: gerar os 1500 é lento)
 const clueAvg: Record<string, number> = {};

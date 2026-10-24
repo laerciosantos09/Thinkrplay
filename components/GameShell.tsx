@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import RankingTable from './RankingTable';
+import UnlockInfo from './UnlockInfo';
 import { TIER_LABELS } from '../config';
-import { CHALLENGES_PER_TIER, TIERS, Tier, UNLOCK_RULES, isTierUnlocked } from '../lib/tiers';
+import { CHALLENGES_PER_TIER, TIERS, Tier, UNLOCK_RULES, isTierUnlocked, nextLockedTier, unlockStatus } from '../lib/tiers';
 import { PlayCtl } from '../services/usePlay';
 
 interface GameShellProps {
@@ -75,12 +76,14 @@ const GameShell: React.FC<GameShellProps> = ({ title, slug, ctl, onBack, stats, 
             >
               <span className="block font-black text-sm">{unlocked ? '' : '🔒 '}{TIER_LABELS[t]}</span>
               <span className={`block text-[11px] font-semibold ${on ? 'opacity-80' : 'text-slate-400'}`}>
-                {unlocked ? `${ctl.progress[t]}/${CHALLENGES_PER_TIER}` : `${ctl.progress[rule!.from]}/${rule!.needed} no ${TIER_LABELS[rule!.from]}`}
+                {unlocked ? `${ctl.progress[t]}/${CHALLENGES_PER_TIER}` : `faltam ${unlockStatus(t, ctl.progress)!.remaining} no ${TIER_LABELS[rule!.from]}`}
               </span>
             </button>
           );
         })}
       </div>
+
+      <UnlockInfo progress={ctl.progress} />
 
       <div className="flex flex-wrap items-center justify-between gap-2 mb-6">
         <ChallengePicker ctl={ctl} />
@@ -113,6 +116,15 @@ export const WinPanel: React.FC<{ title: string; text: string; ctl: PlayCtl }> =
       ) : (
         <p className="text-sm font-bold text-slate-500 my-2">Desafio já resolvido antes: repetição não vale pontos.</p>
       )}
+      {(() => {
+        const next = nextLockedTier(r.progress);
+        const st = next && unlockStatus(next, r.progress);
+        return st && !r.unlockedTier ? (
+          <p className="text-sm font-bold text-brand-700 my-2">
+            Faltam {st.remaining} {st.remaining === 1 ? 'desafio' : 'desafios'} no {TIER_LABELS[st.from]} para liberar o {TIER_LABELS[next!]}.
+          </p>
+        ) : null;
+      })()}
       {r.unlockedTier && (
         <div className="my-3 rounded-xl bg-white border border-amber-300 px-4 py-3">
           <p className="font-black text-ink-800">🔓 {TIER_LABELS[r.unlockedTier]} liberado!</p>

@@ -14,6 +14,7 @@ Cada jogo tem 3 níveis (**Easy**, **Medium**, **Hard**) com **500 desafios** ca
 
 - **Medium** abre, naquele jogo, ao resolver **10 desafios** do Easy.
 - **Hard** abre, naquele jogo, ao resolver **20 desafios** do Medium.
+- A tela de cada jogo mostra o **contador do próximo nível** ("Faltam N desafios no Easy", com barra de progresso), as regras de liberação e a observação de que só o primeiro acerto de cada desafio conta. O mesmo "faltam N" aparece nas abas, depois de cada vitória e nos cartões do painel.
 - Os desafios de um nível abrem em sequência (resolveu o #7, abre o #8). Os já resolvidos podem ser repetidos, mas **só o primeiro acerto vale pontos**.
 - Os desafios mudam de verdade conforme o nível, não só de tamanho: menos dicas no Sudoku, mais pares na Memória, regras mais complexas nas Sequências, tabuleiros maiores no Luzes, códigos mais longos (e com menos tentativas) no Código Secreto, e na Hanói mais discos em configurações embaralhadas.
 - As regras de liberação ficam em `lib/tiers.ts` (`UNLOCK_RULES`); a dificuldade de cada jogo, no próprio `lib/<jogo>.ts`.
@@ -37,6 +38,15 @@ Cada jogo tem 3 níveis (**Easy**, **Medium**, **Hard**) com **500 desafios** ca
 
    Com a integração Neon da Vercel (Storage), `DATABASE_URL` e `DATABASE_URL_UNPOOLED` são criadas sozinhas. A API usa `DATABASE_URL` (com pool); os scripts de migração e de admin preferem `DATABASE_URL_UNPOOLED`. **`JWT_SECRET` não vem da integração: crie manualmente** (Production e Preview) e faça um novo deploy. Marque as variáveis como *Sensitive* na Vercel.
 4. Faça o deploy. No celular, abra o site e use "Adicionar à tela inicial" para instalar.
+
+## Configurações do administrador
+
+Quem tem perfil `admin` (veja "Criar o admin" abaixo) vê **⚙️ Configurações** no menu e pode ativar ou desativar cada jogo.
+
+- Jogo desativado some do painel e do ranking, e o servidor recusa iniciar, continuar ou finalizar partidas dele.
+- O progresso e os pontos ficam guardados; ao reativar, o jogo volta como estava.
+- A permissão é conferida no banco a cada chamada (`users.role`), então rebaixar um admin vale na hora. A API de configurações é `GET/POST /api/games`.
+- Tabela: `game_settings` (jogo sem linha conta como ativo).
 
 ## Scripts do banco (Neon)
 

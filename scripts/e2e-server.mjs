@@ -11,6 +11,10 @@ mkdirSync(path.join(root, 'node_modules/.cache'), { recursive: true });
 const out = mkdtempSync(path.join(root, 'node_modules/.cache/e2e-'));
 const pg = new PGlite();
 for (const s of readFileSync(path.join(root, 'db/schema.sql'), 'utf8').split(/;\s*\n/).map((x) => x.trim()).filter(Boolean)) await pg.query(s);
+// Admin de teste (senha só existe aqui, em memória): admin@e2e.com / AdminE2E-1@
+const { execFileSync } = await import('node:child_process');
+await pg.exec(execFileSync('node', [path.join(root, 'scripts/create-admin.mjs'), '--sql'], {
+  env: { ...process.env, ADMIN_EMAIL: 'admin@e2e.com', ADMIN_USERNAME: 'admin', ADMIN_PASSWORD: 'AdminE2E-1@' }, encoding: 'utf8' }));
 globalThis.__sql = async (strings, ...values) =>
   (await pg.query(strings.reduce((acc, s, i) => acc + s + (i < values.length ? `$${i + 1}` : ''), ''), values)).rows;
 globalThis.__pg = pg;
@@ -18,7 +22,7 @@ writeFileSync(path.join(out, 'db-shim.js'), `export const sql = (...a) => global
 export const assertDb = () => {};
 export class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }`);
 
-const names = ['auth/register', 'auth/login', 'auth/recover', 'auth/me', 'auth/logout', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress'];
+const names = ['auth/register', 'auth/login', 'auth/recover', 'auth/me', 'auth/logout', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'games'];
 await build({
   entryPoints: Object.fromEntries(names.map((n) => [n, path.join(root, 'api', `${n}.ts`)])),
   outdir: out, bundle: true, format: 'esm', platform: 'node', packages: 'external',
