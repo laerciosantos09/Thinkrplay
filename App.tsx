@@ -9,8 +9,8 @@ import LightsGame from './pages/LightsGame';
 import MastermindGame from './pages/MastermindGame';
 import GlobalRanking from './pages/GlobalRanking';
 import Navbar from './components/Navbar';
-import { Session } from './types';
-import { loadSession, setUnauthorizedHandler, storeSession } from './services/api';
+import { User } from './types';
+import { fetchMe, logout as apiLogout, setUnauthorizedHandler } from './services/api';
 
 const GAME_PAGES: Record<string, React.FC<{ onBack: () => void }>> = {
   sudoku: SudokuGame,
@@ -22,27 +22,40 @@ const GAME_PAGES: Record<string, React.FC<{ onBack: () => void }>> = {
 };
 
 const App: React.FC = () => {
-  const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [user, setUser] = useState<User | null>(null);
+  const [checking, setChecking] = useState(true);
   const [page, setPage] = useState('dashboard');
 
-  const logout = useCallback(() => {
-    storeSession(null);
-    setSession(null);
+  const clear = useCallback(() => {
+    setUser(null);
     setPage('dashboard');
   }, []);
 
-  useEffect(() => setUnauthorizedHandler(logout), [logout]);
+  const logout = useCallback(() => {
+    apiLogout().catch(() => {});
+    clear();
+  }, [clear]);
 
-  if (!session) {
+  useEffect(() => setUnauthorizedHandler(clear), [clear]);
+
+  // A sessão é um cookie HttpOnly; pergunta ao servidor quem está logado.
+  useEffect(() => {
+    fetchMe()
+      .then((r) => setUser(r.user))
+      .catch(() => {})
+      .finally(() => setChecking(false));
+  }, []);
+
+  if (checking) {
     return (
-      <Login
-        onLogin={(s) => {
-          storeSession(s);
-          setSession(s);
-          setPage('dashboard');
-        }}
-      />
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500" />
+      </div>
     );
+  }
+
+  if (!user) {
+    return <Login onLogin={(u) => { setUser(u); setPage('dashboard'); }} />;
   }
 
   const home = () => setPage('dashboard');
@@ -50,7 +63,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Navbar user={session.user} onLogout={logout} onHome={home} onRanking={() => setPage('ranking')} />
+      <Navbar user={user} onLogout={logout} onHome={home} onRanking={() => setPage('ranking')} />
       <main className="container mx-auto px-4 py-6 sm:py-8">
         {Game ? (
           <Game key={page} onBack={home} />

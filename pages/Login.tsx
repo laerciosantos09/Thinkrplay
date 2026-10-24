@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Session } from '../types';
+import { User } from '../types';
 import { APP_NAME, APP_TAGLINE } from '../config';
 import { login, recoverPassword, register } from '../services/api';
 
@@ -14,7 +14,7 @@ const Field: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: str
   </div>
 );
 
-const Login: React.FC<{ onLogin: (session: Session) => void }> = ({ onLogin }) => {
+const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const [mode, setMode] = useState<Mode>('login');
   const [form, setForm] = useState({ username: '', email: '', password: '', secretWord: '', newPassword: '' });
   const [error, setError] = useState<string | null>(null);
@@ -41,9 +41,9 @@ const Login: React.FC<{ onLogin: (session: Session) => void }> = ({ onLogin }) =
         switchMode('login');
         setNotice('Senha redefinida. Entre com a nova senha.');
       } else if (mode === 'register') {
-        onLogin(await register(form));
+        onLogin((await register(form)).user);
       } else {
-        onLogin(await login(form.email, form.password));
+        onLogin((await login(form.email, form.password)).user);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Algo deu errado.');
@@ -77,16 +77,16 @@ const Login: React.FC<{ onLogin: (session: Session) => void }> = ({ onLogin }) =
           )}
           <Field label="E-mail" type="email" autoComplete="email" value={form.email} onChange={set('email')} placeholder="seu@email.com" />
           {mode !== 'recover' && (
-            <Field label="Senha" type="password" minLength={mode === 'register' ? 6 : undefined}
+            <Field label="Senha" type="password" minLength={mode === 'register' ? 8 : undefined}
               autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
               value={form.password} onChange={set('password')} placeholder="••••••••" />
           )}
           {mode !== 'login' && (
-            <Field label="Palavra Secreta (recuperação)" type="text" autoComplete="off"
+            <Field label="Palavra Secreta (recuperação)" type="text" autoComplete="off" minLength={4}
               value={form.secretWord} onChange={set('secretWord')} placeholder="Ex: Nome da sua escola" />
           )}
           {mode === 'recover' && (
-            <Field label="Nova senha" type="password" minLength={6} autoComplete="new-password"
+            <Field label="Nova senha" type="password" minLength={8} autoComplete="new-password"
               value={form.newPassword} onChange={set('newPassword')} placeholder="••••••••" />
           )}
 

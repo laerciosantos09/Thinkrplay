@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { generateSudoku, countSolutions, cluesForLevel } from '../lib/sudoku';
-import { generateSequence } from '../lib/sequence';
-import { generateLights, isSolved, press } from '../lib/lights';
-import { evaluate, generateCode, configForLevel } from '../lib/mastermind';
-import { mulberry32, seedFor } from '../lib/rng';
+import { generateSudoku, countSolutions, cluesForLevel } from '../lib/sudoku.js';
+import { generateSequence } from '../lib/sequence.js';
+import { generateLights, isSolved, press } from '../lib/lights.js';
+import { evaluate, generateCode, configForLevel } from '../lib/mastermind.js';
+import { mulberry32, seedFor } from '../lib/rng.js';
 
 for (const level of [1, 40, 120, 500, 1000]) {
   const { puzzle, solution } = generateSudoku(mulberry32(seedFor('sudoku', level)), level);

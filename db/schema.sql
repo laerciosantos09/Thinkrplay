@@ -31,3 +31,28 @@ CREATE TABLE IF NOT EXISTS progress (
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, game)
 );
+
+CREATE TABLE IF NOT EXISTS plays (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game text NOT NULL,
+  level integer NOT NULL,
+  seed integer NOT NULL,
+  state jsonb NOT NULL DEFAULT '{}',
+  started_at timestamptz NOT NULL DEFAULT now(),
+  finished_at timestamptz,
+  points integer
+);
+
+CREATE INDEX IF NOT EXISTS plays_user_started_idx ON plays (user_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  id bigserial PRIMARY KEY,
+  email text NOT NULL,
+  ip text NOT NULL,
+  at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS auth_attempts_email_idx ON auth_attempts (email, at DESC);
+
+CREATE INDEX IF NOT EXISTS auth_attempts_ip_idx ON auth_attempts (ip, at DESC);

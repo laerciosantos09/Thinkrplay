@@ -1,4 +1,4 @@
-import { Rng, shuffle } from './rng';
+import { Rng, shuffle } from './rng.js';
 
 export type Grid = number[][]; // 0 = vazio
 

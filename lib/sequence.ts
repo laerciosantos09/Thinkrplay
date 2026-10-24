@@ -1,4 +1,4 @@
-import { Rng, randInt, shuffle } from './rng';
+import { Rng, randInt, shuffle } from './rng.js';
 
 export interface SequencePuzzle {
   shown: number[];

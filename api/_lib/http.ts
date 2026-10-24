@@ -7,31 +7,56 @@ export interface Session {
   username: string;
 }
 
+export const GAME_SLUGS = ['sudoku', 'memory', 'sequence', 'hanoi', 'lights', 'mastermind'];
+export const MAX_LEVEL = 1000;
+
+const COOKIE = 'session';
+const MAX_AGE = 60 * 60 * 24 * 30;
+
 const secret = () => {
   const value = process.env.JWT_SECRET;
-  if (!value || value.length < 16) throw new HttpError(500, 'JWT_SECRET não configurado.');
+  if (!value || value.length < 32) throw new HttpError(500, 'JWT_SECRET não configurado (mínimo 32 caracteres).');
   return new TextEncoder().encode(value);
 };
 
-export const signToken = (session: Session) =>
-  new SignJWT({ username: session.username })
+const isLocal = (req: VercelRequest) => /^(localhost|127\.0\.0\.1)(:|$)/.test(String(req.headers.host ?? ''));
+
+export const startSession = async (req: VercelRequest, res: VercelResponse, session: Session) => {
+  const token = await new SignJWT({ username: session.username })
     .setProtectedHeader({ alg: 'HS256' })
     .setSubject(session.id)
-    .setExpirationTime('30d')
+    .setExpirationTime(`${MAX_AGE}s`)
     .sign(secret());
+  res.setHeader(
+    'Set-Cookie',
+    `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${MAX_AGE}${isLocal(req) ? '' : '; Secure'}`,
+  );
+};
+
+export const endSession = (res: VercelResponse) =>
+  res.setHeader('Set-Cookie', `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+
+const readCookie = (req: VercelRequest, name: string) =>
+  String(req.headers.cookie ?? '')
+    .split(';')
+    .map((c) => c.trim().split('='))
+    .find(([k]) => k === name)?.[1];
 
 export const requireSession = async (req: VercelRequest): Promise<Session> => {
-  const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  const token = readCookie(req, COOKIE);
   if (!token) throw new HttpError(401, 'Sessão expirada. Entre novamente.');
   try {
-    const { payload } = await jwtVerify(token, secret());
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ['HS256'] });
     return { id: String(payload.sub), username: String(payload.username) };
   } catch {
     throw new HttpError(401, 'Sessão expirada. Entre novamente.');
   }
 };
 
-type Handler = (req: VercelRequest) => Promise<unknown>;
+export const clientIp = (req: VercelRequest) =>
+  String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? 'unknown').split(',')[0].trim();
+
+type Handler = (req: VercelRequest, res: VercelResponse) => Promise<unknown>;
 
 export const route = (methods: string[], handler: Handler) =>
   async (req: VercelRequest, res: VercelResponse) => {
@@ -40,8 +65,16 @@ export const route = (methods: string[], handler: Handler) =>
         res.setHeader('Allow', methods.join(', '));
         throw new HttpError(405, 'Método não permitido.');
       }
+      // Defesa extra contra CSRF (além do SameSite=Strict): POST só da própria origem.
+      if (req.method !== 'GET') {
+        const origin = req.headers.origin;
+        if (origin && new URL(origin).host !== req.headers.host) throw new HttpError(403, 'Origem não permitida.');
+        if (!String(req.headers['content-type'] ?? '').includes('application/json')) {
+          throw new HttpError(415, 'Conteúdo inválido.');
+        }
+      }
       assertDb();
-      const body = await handler(req);
+      const body = await handler(req, res);
       res.setHeader('Cache-Control', 'no-store');
       res.status(200).json(body);
     } catch (err) {
@@ -62,14 +95,3 @@ export const str = (value: unknown, field: string, min: number, max: number) => 
   }
   return trimmed;
 };
-
-export const GAME_LIMITS: Record<string, number> = {
-  sudoku: 5000,
-  memory: 5000,
-  sequence: 5000,
-  hanoi: 5000,
-  lights: 5000,
-  mastermind: 5000,
-};
-
-export const MAX_LEVEL = 1000;

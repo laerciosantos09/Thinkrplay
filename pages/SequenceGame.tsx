@@ -1,55 +1,45 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import GameShell, { WinPanel } from '../components/GameShell';
-import { useProgress } from '../services/useProgress';
-import { generateSequence } from '../lib/sequence';
-import { mulberry32, seedFor } from '../lib/rng';
+import { PlayCtl, usePlay } from '../services/usePlay';
+import { StartedPlay } from '../services/api';
 
-const ROUNDS = 3;
+interface GuessResponse { correct: boolean; done: boolean; points?: number; unlocked?: number }
 
-const SequenceGame: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const [level, setLevel] = useState(1);
-  const { unlocked, rankingKey, saveError, complete } = useProgress('sequence', setLevel);
-  const [attempt, setAttempt] = useState(0);
+// As respostas ficam só no servidor: cada clique é conferido lá.
+const Board: React.FC<{ ctl: PlayCtl; puzzles: NonNullable<StartedPlay['puzzles']>; onProgress: (s: string) => void }> = ({ ctl, puzzles, onProgress }) => {
   const [round, setRound] = useState(0);
   const [mistakes, setMistakes] = useState(0);
-  const [hints, setHints] = useState(0);
-  const [showHint, setShowHint] = useState(false);
   const [wrong, setWrong] = useState<number[]>([]);
-  const [points, setPoints] = useState<number | null>(null);
+  const [showHint, setShowHint] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const puzzle = puzzles[Math.min(round, puzzles.length - 1)];
 
-  const puzzles = useMemo(
-    () => Array.from({ length: ROUNDS }, (_, i) =>
-      generateSequence(mulberry32(seedFor('sequence', level * 10 + i) + attempt), level)),
-    [level, attempt],
-  );
-
-  useEffect(() => {
-    setRound(0); setMistakes(0); setHints(0); setShowHint(false); setWrong([]); setPoints(null);
-  }, [level, attempt]);
-
-  const puzzle = puzzles[Math.min(round, ROUNDS - 1)];
-
-  const answer = (value: number) => {
-    if (points !== null) return;
-    if (value !== puzzle.answer) {
-      setMistakes((m) => m + 1);
-      setWrong((w) => [...w, value]);
-      return;
+  const answer = async (value: number) => {
+    if (busy || ctl.result) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await ctl.guess<GuessResponse>({ value });
+      if (!r.correct) {
+        setMistakes((m) => m + 1);
+        setWrong((w) => [...w, value]);
+        onProgress(`Desafio ${round + 1}/${puzzles.length} · ${mistakes + 1} erros`);
+      } else if (!r.done) {
+        setRound(round + 1);
+        setWrong([]);
+        setShowHint(false);
+        onProgress(`Desafio ${round + 2}/${puzzles.length} · ${mistakes} erros`);
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erro ao enviar a resposta.');
+    } finally {
+      setBusy(false);
     }
-    if (round + 1 < ROUNDS) {
-      setRound(round + 1);
-      setWrong([]);
-      setShowHint(false);
-      return;
-    }
-    const earned = Math.max(20, Math.min(4000, 100 + level * 2 - mistakes * 20 - hints * 10));
-    setPoints(earned);
-    complete(level, earned);
   };
 
   return (
-    <GameShell title="Sequências" slug="sequence" level={level} unlocked={unlocked} onLevel={setLevel} onBack={onBack}
-      rankingKey={rankingKey} stats={`Desafio ${Math.min(round + 1, ROUNDS)}/${ROUNDS} · ${mistakes} erros`}>
+    <>
       <p className="text-center text-slate-500 mb-4">Qual número vem a seguir?</p>
       <div className="flex flex-wrap justify-center gap-2 mb-6">
         {puzzle.shown.map((n, i) => (
@@ -57,12 +47,11 @@ const SequenceGame: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         ))}
         <span className="min-w-[3.25rem] px-3 py-3 bg-indigo-100 rounded-xl text-xl font-black text-indigo-500 text-center">?</span>
       </div>
-
       <div className="grid grid-cols-2 gap-3 max-w-md mx-auto">
         {puzzle.options.map((o) => (
           <button
             key={o}
-            disabled={wrong.includes(o)}
+            disabled={wrong.includes(o) || busy || !!ctl.result}
             onClick={() => answer(o)}
             className="py-4 rounded-2xl text-2xl font-black bg-slate-800 text-white hover:bg-indigo-600 disabled:bg-red-100 disabled:text-red-400 active:scale-95 transition-all"
           >
@@ -70,28 +59,25 @@ const SequenceGame: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </button>
         ))}
       </div>
-
+      {err && <p role="alert" className="text-center text-sm font-bold text-red-600 mt-4">{err}</p>}
       <div className="text-center mt-6 min-h-[3rem]">
         {showHint ? (
           <p className="text-amber-700 bg-amber-50 rounded-xl px-4 py-2 inline-block">{puzzle.hint}</p>
         ) : (
-          <button onClick={() => { setShowHint(true); setHints((h) => h + 1); }} className="text-sm font-bold text-indigo-600 hover:underline">
-            Pedir dica (-10 pontos)
-          </button>
+          <button onClick={() => setShowHint(true)} className="text-sm font-bold text-indigo-600 hover:underline">Pedir dica</button>
         )}
       </div>
+      <WinPanel title={`Nível ${ctl.level} concluído!`} text={`${mistakes} erro(s).`} ctl={ctl} />
+    </>
+  );
+};
 
-      {points !== null && (
-        <WinPanel
-          title={`Nível ${level} concluído!`}
-          text={`${mistakes} erro(s) e ${hints} dica(s).`}
-          points={points}
-          saveError={saveError}
-          canAdvance={level < unlocked}
-          onNext={() => setLevel(level + 1)}
-          onRetry={() => setAttempt((a) => a + 1)}
-        />
-      )}
+const SequenceGame: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+  const ctl = usePlay('sequence');
+  const [stats, setStats] = useState('');
+  return (
+    <GameShell title="Sequências" slug="sequence" ctl={ctl} onBack={onBack} stats={stats}>
+      {ctl.play?.puzzles && <Board key={ctl.play.playId} ctl={ctl} puzzles={ctl.play.puzzles} onProgress={setStats} />}
     </GameShell>
   );
 };
