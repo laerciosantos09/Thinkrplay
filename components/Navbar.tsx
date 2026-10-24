@@ -8,9 +8,10 @@ interface NavbarProps {
   onHome: () => void;
   onRanking: () => void;
   onSettings?: () => void; // só para administradores
+  onProfile: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onHome, onRanking, onSettings }) => (
+const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onHome, onRanking, onSettings, onProfile }) => (
   <nav className="bg-ink-900 text-white shadow-lg sticky top-0 z-50 pt-[env(safe-area-inset-top)]">
     <div className="container mx-auto px-4 py-3 flex justify-between items-center">
       <button onClick={onHome} aria-label="Início" className="group">
@@ -30,10 +31,15 @@ const Navbar: React.FC<NavbarProps> = ({ user, onLogout, onHome, onRanking, onSe
           </button>
         )}
 
-        <div className="hidden md:flex flex-col items-end">
-          <span className="text-sm font-medium text-slate-300">Olá, {user.username}</span>
-          <span className="text-xs text-slate-500">{user.email}</span>
-        </div>
+        <button onClick={onProfile} aria-label="Meu perfil" className="group flex items-center gap-2 text-left">
+          <span className="w-9 h-9 rounded-full bg-linear-to-br from-brand-400 to-brand-700 text-white text-sm font-black flex items-center justify-center" aria-hidden="true">
+            {user.username[0]?.toUpperCase()}
+          </span>
+          <span className="hidden md:flex flex-col items-start">
+            <span className="text-sm font-medium text-slate-200 group-hover:text-white">{user.username}</span>
+            <span className="text-xs text-slate-500">Meu perfil</span>
+          </span>
+        </button>
 
         <button
           onClick={onLogout}

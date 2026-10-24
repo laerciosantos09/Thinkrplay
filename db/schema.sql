@@ -8,11 +8,20 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash text NOT NULL,
   secret_hash text NOT NULL,
   role text NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+  token_version integer NOT NULL DEFAULT 0, -- sobe ao trocar/redefinir a senha: encerra as outras sessões
+  terms_version text, -- versão dos Termos/Privacidade aceita (null = ainda não aceitou)
+  terms_accepted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
--- Bancos criados antes do campo role
+-- Bancos criados antes dos campos abaixo
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin'));
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version integer NOT NULL DEFAULT 0;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_version text;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at timestamptz;
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_key ON users (lower(username));
 
@@ -31,6 +40,9 @@ CREATE TABLE IF NOT EXISTS scores (
 CREATE INDEX IF NOT EXISTS scores_game_created_idx ON scores (game, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS scores_user_idx ON scores (user_id);
+
+-- Ranking geral (todos os jogos) filtra só por período
+CREATE INDEX IF NOT EXISTS scores_created_idx ON scores (created_at DESC);
 
 -- Desafios resolvidos por usuário, jogo e nível (easy/medium/hard). Os desafios abrem em sequência (1..500).
 CREATE TABLE IF NOT EXISTS tier_progress (

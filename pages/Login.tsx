@@ -18,6 +18,7 @@ const Field: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: str
 const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
   const [mode, setMode] = useState<Mode>('login');
   const [form, setForm] = useState({ username: '', email: '', password: '', secretWord: '', newPassword: '' });
+  const [acceptTerms, setAcceptTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -42,7 +43,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
         switchMode('login');
         setNotice('Senha redefinida. Entre com a nova senha.');
       } else if (mode === 'register') {
-        onLogin((await register(form)).user);
+        onLogin((await register({ ...form, acceptTerms })).user);
       } else {
         onLogin((await login(form.email, form.password)).user);
       }
@@ -96,6 +97,16 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
               value={form.newPassword} onChange={set('newPassword')} placeholder="••••••••" />
           )}
 
+          {mode === 'register' && (
+            <label className="flex items-start gap-3 text-sm text-slate-600 cursor-pointer">
+              <input type="checkbox" required checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} className="mt-0.5 w-5 h-5 accent-brand-600 shrink-0" />
+              <span>
+                Li e aceito os <a href="/termos" target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Termos de Uso</a> e
+                a <a href="/privacidade" target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Política de Privacidade</a>.
+              </span>
+            </label>
+          )}
+
           {mode === 'login' && (
             <div className="text-right">
               <button type="button" onClick={() => switchMode('recover')} className="text-xs font-bold text-brand-600 hover:underline">
@@ -114,6 +125,10 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
             {busy ? 'Aguarde...' : mode === 'register' ? 'Cadastrar' : mode === 'recover' ? 'Redefinir senha' : 'Entrar'}
           </button>
         </form>
+
+        <p className="mt-4 text-center text-xs text-slate-400">
+          <a href="/termos" className="hover:underline">Termos de Uso</a> · <a href="/privacidade" className="hover:underline">Política de Privacidade</a>
+        </p>
 
         <div className="mt-6 text-center border-t border-slate-100 pt-6 text-slate-500">
           {mode === 'login' ? (

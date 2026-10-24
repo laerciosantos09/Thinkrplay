@@ -1,10 +1,15 @@
 import path from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
+  if (mode === 'production' && (!env.VITE_LEGAL_CONTROLLER || !env.VITE_LEGAL_CONTACT_EMAIL)) {
+    console.warn('\n[thinkrplay] ATENÇÃO: defina VITE_LEGAL_CONTROLLER e VITE_LEGAL_CONTACT_EMAIL. Sem eles, os Termos e a Política de Privacidade mostram um aviso no lugar do responsável e do e-mail de contato.\n');
+  }
+  return {
   server: {
     port: 3000,
     host: '0.0.0.0',
@@ -45,4 +50,5 @@ export default defineConfig({
     }),
   ],
   resolve: { alias: { '@': path.resolve(__dirname, '.') } },
+};
 });

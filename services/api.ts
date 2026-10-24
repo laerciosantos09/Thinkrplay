@@ -33,10 +33,18 @@ const request = async <T,>(path: string, init: { method?: string; body?: unknown
   return data as T;
 };
 
-export const fetchMe = () => request<{ user: User }>('auth/me');
+// A sessão é um cookie: perguntar pelo perfil também diz se há alguém logado.
+export const fetchProfile = () => request<{ user: User }>('profile');
 export const login = (email: string, password: string) => request<{ user: User }>('auth/login', { body: { email, password } });
-export const register = (body: { username: string; email: string; password: string; secretWord: string }) =>
+export const register = (body: { username: string; email: string; password: string; secretWord: string; acceptTerms: boolean }) =>
   request<{ user: User }>('auth/register', { body });
+export const updateUsername = (username: string) =>
+  request<{ user: User }>('profile', { body: { action: 'username', username } });
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  request<{ ok: true }>('profile', { body: { action: 'password', currentPassword, newPassword } });
+export const deleteAccount = (password: string, confirm: string) =>
+  request<{ ok: true }>('profile', { body: { action: 'delete', password, confirm } });
+export const acceptTerms = () => request<{ user: User }>('profile', { body: { action: 'accept_terms' } });
 export const logout = () => request<{ ok: true }>('auth/logout', { body: {} });
 export const recoverPassword = (body: { email: string; secretWord: string; newPassword: string }) =>
   request<{ ok: true }>('auth/recover', { body });

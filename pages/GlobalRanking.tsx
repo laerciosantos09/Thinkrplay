@@ -9,7 +9,11 @@ interface GlobalRankingProps {
 }
 
 const GlobalRanking: React.FC<GlobalRankingProps> = ({ onBack, isEnabled }) => {
-  const games = GAMES.filter((g) => isEnabled(g.slug));
+  // Primeira opção: ranking geral (soma de todos os jogos). Depois, um ranking por jogo habilitado.
+  const games = [
+    { id: 'all', name: 'Geral', slug: 'all', description: '', icon: '🏆', color: 'bg-linear-to-br from-brand-400 to-brand-700' },
+    ...GAMES.filter((g) => isEnabled(g.slug)),
+  ];
   const [picked, setPicked] = useState<string | null>(null);
   // Se o jogo escolhido foi desativado, cai no primeiro disponível.
   const currentGame = games.find((g) => g.slug === picked) ?? games[0];
@@ -63,16 +67,12 @@ const GlobalRanking: React.FC<GlobalRankingProps> = ({ onBack, isEnabled }) => {
                   {currentGame?.icon}
                 </span>
                 <h2 className="text-2xl font-black text-ink-800">
-                  Líderes de <span className="text-brand-600">{currentGame?.name}</span>
+                  {selectedGameSlug === 'all' ? <>Ranking <span className="text-brand-600">Geral</span></> : <>Líderes de <span className="text-brand-600">{currentGame?.name}</span></>}
                 </h2>
               </div>
             </div>
             
-            {currentGame ? (
-              <RankingTable slug={selectedGameSlug} />
-            ) : (
-              <p className="text-center text-slate-500 py-12">Nenhum jogo disponível no momento.</p>
-            )}
+            <RankingTable slug={selectedGameSlug} />
           </div>
           
           <div className="mt-8 bg-brand-600 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-100">

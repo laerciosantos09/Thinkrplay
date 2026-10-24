@@ -39,6 +39,20 @@ Cada jogo tem 3 níveis (**Easy**, **Medium**, **Hard**) com **500 desafios** ca
    Com a integração Neon da Vercel (Storage), `DATABASE_URL` e `DATABASE_URL_UNPOOLED` são criadas sozinhas. A API usa `DATABASE_URL` (com pool); os scripts de migração e de admin preferem `DATABASE_URL_UNPOOLED`. **`JWT_SECRET` não vem da integração: crie manualmente** (Production e Preview) e faça um novo deploy. Marque as variáveis como *Sensitive* na Vercel.
 4. Faça o deploy. No celular, abra o site e use "Adicionar à tela inicial" para instalar.
 
+## Perfil, termos e privacidade
+
+- **Perfil** (clique no seu nome no menu): trocar o **nome de usuário** (único, sem diferenciar maiúsculas, diferente do e-mail, que nunca aparece para outros), **alterar a senha** (pede a atual e desconecta os outros dispositivos) e **excluir a conta** (pede a senha e a palavra EXCLUIR; apaga cadastro, pontuações, partidas e progresso, e libera e-mail e nome). O último administrador não pode se excluir.
+- **Termos de Uso** (`/termos`) e **Política de Privacidade** (`/privacidade`, LGPD): páginas públicas, sem login — use a URL da privacidade na ficha das lojas de apps. O cadastro exige aceite, que é registrado com a versão (`LEGAL_VERSION` em `lib/legal.ts`). Ao mudar o texto de forma relevante, altere essa versão e todos veem a tela de aceite de novo.
+- Os textos estão em `content/legal.ts`. **São um modelo e devem ser revisados por um advogado** antes de publicar.
+- Defina no build da Vercel (Environment Variables) o responsável e o contato que aparecem nos documentos: `VITE_LEGAL_CONTROLLER` (nome ou razão social e CPF/CNPJ) e `VITE_LEGAL_CONTACT_EMAIL`. O build avisa se faltarem.
+- A sessão é invalidada na hora ao trocar/redefinir a senha ou excluir a conta (o servidor confere o usuário no banco a cada chamada).
+
+## Rankings
+
+- **Ranking Geral** (soma de todos os jogos) e **um por jogo**, em quatro períodos (diário, semanal, mensal e anual).
+- São calculados no servidor a cada consulta a partir das pontuações: cada desafio concluído entra no ranking imediatamente. A tela atualiza sozinha a cada 20 s enquanto está aberta (e na hora, quando é você quem conclui).
+- Mostram o top 10 e, para quem está logado, a própria posição mesmo fora do top 10.
+
 ## Configurações do administrador
 
 Quem tem perfil `admin` (veja "Criar o admin" abaixo) vê **⚙️ Configurações** no menu e pode ativar ou desativar cada jogo.

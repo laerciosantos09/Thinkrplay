@@ -5,6 +5,8 @@ import { HttpError, assertDb, sql } from './db.js';
 export interface Session {
   id: string;
   username: string;
+  role: string;
+  version: number; // token_version do usuário: trocar a senha invalida as sessões antigas
 }
 
 export const GAME_SLUGS = ['sudoku', 'memory', 'sequence', 'hanoi', 'lights', 'mastermind'];
@@ -20,10 +22,14 @@ const secret = () => {
 
 const isLocal = (req: VercelRequest) => /^(localhost|127\.0\.0\.1)(:|$)/.test(String(req.headers.host ?? ''));
 
-export const startSession = async (req: VercelRequest, res: VercelResponse, session: Session) => {
-  const token = await new SignJWT({ username: session.username })
+export const startSession = async (
+  req: VercelRequest,
+  res: VercelResponse,
+  user: { id: string; version: number },
+) => {
+  const token = await new SignJWT({ v: user.version })
     .setProtectedHeader({ alg: 'HS256' })
-    .setSubject(session.id)
+    .setSubject(user.id)
     .setExpirationTime(`${MAX_AGE}s`)
     .sign(secret());
   res.setHeader(
@@ -41,22 +47,40 @@ const readCookie = (req: VercelRequest, name: string) =>
     .map((c) => c.trim().split('='))
     .find(([k]) => k === name)?.[1];
 
+const EXPIRED = 'Sessão expirada. Entre novamente.';
+
+// Confere o token E o usuário no banco: conta excluída, senha trocada ou perfil rebaixado valem na hora.
 export const requireSession = async (req: VercelRequest): Promise<Session> => {
   const token = readCookie(req, COOKIE);
-  if (!token) throw new HttpError(401, 'Sessão expirada. Entre novamente.');
+  if (!token) throw new HttpError(401, EXPIRED);
+  let id: string;
+  let version: unknown;
   try {
     const { payload } = await jwtVerify(token, secret(), { algorithms: ['HS256'] });
-    return { id: String(payload.sub), username: String(payload.username) };
+    id = String(payload.sub);
+    version = payload.v;
   } catch {
-    throw new HttpError(401, 'Sessão expirada. Entre novamente.');
+    throw new HttpError(401, EXPIRED);
+  }
+  const rows = await sql`SELECT username, role, token_version FROM users WHERE id = ${id}`;
+  const user = rows[0];
+  if (!user || user.token_version !== version) throw new HttpError(401, EXPIRED);
+  return { id, username: user.username, role: user.role, version: user.token_version };
+};
+
+// Sessão opcional (rotas públicas que personalizam a resposta quando há alguém logado).
+export const optionalSession = async (req: VercelRequest): Promise<Session | null> => {
+  try {
+    return await requireSession(req);
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 401) return null;
+    throw err;
   }
 };
 
-// O perfil é conferido no banco a cada chamada (não no token), então rebaixar um admin vale na hora.
 export const requireAdmin = async (req: VercelRequest): Promise<Session> => {
   const session = await requireSession(req);
-  const rows = await sql`SELECT role FROM users WHERE id = ${session.id}`;
-  if (rows[0]?.role !== 'admin') throw new HttpError(403, 'Acesso restrito a administradores.');
+  if (session.role !== 'admin') throw new HttpError(403, 'Acesso restrito a administradores.');
   return session;
 };
 
