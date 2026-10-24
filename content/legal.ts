@@ -53,8 +53,12 @@ export const TERMS: LegalDocument = {
       text: 'Podemos exibir anúncios de terceiros (Google AdSense) para manter o serviço gratuito. Não controlamos nem endossamos o conteúdo dos anúncios nem os sites para onde levam. É proibido clicar em anúncios de forma artificial ou induzir outras pessoas a isso.',
     },
     {
+      title: 'Plano Premium',
+      text: 'O plano Premium é uma assinatura recorrente, cobrada pelo valor informado no momento da contratação, que remove os anúncios e exibe o selo Premium no seu perfil e ao lado do seu nome nos rankings. Ele não concede pontos extras nem vantagem na pontuação. O pagamento é processado pelo Stripe; não guardamos os dados do seu cartão. O cancelamento interrompe a renovação automática, e o acesso continua até o fim do período já pago. Contratações feitas pela internet podem ser desfeitas em até 7 dias, conforme o Código de Defesa do Consumidor. Podemos alterar benefícios e valores, avisando antes da próxima cobrança, ou deixar de oferecer o plano a novos assinantes.',
+    },
+    {
       title: 'Encerramento de Conta',
-      text: 'Você pode excluir sua conta a qualquer momento no seu Perfil. Ao excluir, todos os seus dados são removidos permanentemente, sem possibilidade de recuperação, e você deixa os rankings imediatamente. Podemos encerrar contas que violem estes Termos.',
+      text: 'Você pode excluir sua conta a qualquer momento no seu Perfil. Ao excluir, todos os seus dados são removidos permanentemente, sem possibilidade de recuperação, e você deixa os rankings imediatamente; se tiver uma assinatura Premium, ela é cancelada antes. Podemos encerrar contas que violem estes Termos.',
     },
     {
       title: 'Limitação de Responsabilidade',
@@ -80,15 +84,15 @@ export const PRIVACY: LegalDocument = {
   sections: [
     {
       title: 'Dados Coletados',
-      text: 'Coletamos: nome de usuário, endereço de e-mail, senha e palavra secreta de recuperação (guardadas apenas como hash irreversível, nunca em texto), partidas, desafios resolvidos, pontuações e progresso. Por segurança, guardamos por cerca de 1 dia o e-mail e o endereço IP de tentativas de login que falharam.',
+      text: 'Coletamos: nome de usuário, endereço de e-mail, senha e palavra secreta de recuperação (guardadas apenas como hash irreversível, nunca em texto), partidas, desafios resolvidos, pontuações e progresso e, se você assinar o Premium, a situação da assinatura (ativa, data de renovação) e o identificador de cliente no Stripe; os dados do cartão ficam somente com o Stripe. Por segurança, guardamos por cerca de 1 dia o e-mail e o endereço IP de tentativas de login que falharam.',
     },
     {
       title: 'Como Usamos seus Dados',
-      text: 'Seus dados são usados para: fornecer e melhorar o serviço; calcular progresso, pontos e rankings; proteger o serviço contra fraude, trapaça e acessos indevidos; registrar o seu aceite dos Termos e da Política de Privacidade; exibir anúncios, quando estiverem ativos.',
+      text: 'Seus dados são usados para: fornecer e melhorar o serviço; calcular progresso, pontos e rankings; proteger o serviço contra fraude, trapaça e acessos indevidos; registrar o seu aceite dos Termos e da Política de Privacidade; exibir anúncios, quando estiverem ativos; processar a assinatura Premium e liberar seus benefícios.',
     },
     {
       title: 'Compartilhamento de Dados',
-      text: 'Não vendemos seus dados pessoais. Seu nome de usuário, pontuação e quantidade de desafios resolvidos aparecem nos rankings; seu e-mail nunca é exibido. Compartilhamos dados apenas com provedores de serviço essenciais (hospedagem e banco de dados, que podem estar fora do Brasil) e quando exigido por lei. Se os anúncios estiverem ativos, o Google AdSense recebe dados técnicos do seu navegador (como IP e identificadores) para exibi-los, conforme a sua escolha de personalização.',
+      text: 'Não vendemos seus dados pessoais. Seu nome de usuário, pontuação e quantidade de desafios resolvidos aparecem nos rankings; seu e-mail nunca é exibido. Compartilhamos dados apenas com provedores de serviço essenciais (hospedagem, banco de dados e, para assinantes, pagamentos pelo Stripe, que podem estar fora do Brasil) e quando exigido por lei. Se você for Premium, o selo ⭐ aparece nos rankings. Se os anúncios estiverem ativos, o Google AdSense recebe dados técnicos do seu navegador (como IP e identificadores) para exibi-los, conforme a sua escolha de personalização.',
     },
     {
       title: 'Cookies e Armazenamento Local',
@@ -104,7 +108,7 @@ export const PRIVACY: LegalDocument = {
     },
     {
       title: 'Retenção de Dados',
-      text: 'Mantemos seus dados enquanto sua conta estiver ativa. Ao excluir a conta pelo Perfil, os dados são removidos imediatamente do nosso banco de dados; cópias de segurança dos provedores podem levar até 30 dias para expirar, e mantemos apenas o que a lei exigir.',
+      text: 'Mantemos seus dados enquanto sua conta estiver ativa. Ao excluir a conta pelo Perfil, os dados são removidos imediatamente do nosso banco de dados; cópias de segurança dos provedores podem levar até 30 dias para expirar, e mantemos apenas o que a lei exigir (por exemplo, registros de cobrança mantidos pelo Stripe por obrigação fiscal).',
     },
     {
       title: 'Menores de Idade',

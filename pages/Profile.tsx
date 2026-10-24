@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
+import { PremiumState } from '../services/api';
 import { changePassword, deleteAccount, updateUsername } from '../services/api';
 import { USERNAME_PATTERN } from '../lib/legal';
 import { SUPPORT_EMAIL } from '../config';
@@ -7,6 +8,8 @@ import { useAds } from '../components/ads/AdsContext';
 
 interface ProfileProps {
   user: User;
+  premium: PremiumState | null;
+  onPremium: () => void;
   onUserChange: (user: User) => void;
   onDeleted: () => void;
   onBack: () => void;
@@ -33,7 +36,7 @@ const Message: React.FC<{ error?: string | null; ok?: string | null }> = ({ erro
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado.');
 
-const Profile: React.FC<ProfileProps> = ({ user, onUserChange, onDeleted, onBack }) => {
+const Profile: React.FC<ProfileProps> = ({ user, premium, onPremium, onUserChange, onDeleted, onBack }) => {
   const ads = useAds();
   // nome de usuário
   const [username, setUsername] = useState(user.username);
@@ -122,6 +125,14 @@ const Profile: React.FC<ProfileProps> = ({ user, onUserChange, onDeleted, onBack
         </div>
       </section>
 
+      {premium && (premium.active || premium.available) && (
+        <Card title="Plano Premium" hint={premium.active ? 'Você é Premium: sem anúncios e com o selo ⭐.' : 'Jogue sem anúncios e apoie o app.'}>
+          <button onClick={onPremium} className="bg-amber-400 hover:bg-amber-300 text-ink-900 px-6 py-3 rounded-xl font-black">
+            {premium.active ? 'Ver ou gerenciar assinatura' : 'Conhecer o Premium'}
+          </button>
+        </Card>
+      )}
+
       <Card title="Nome de usuário" hint="É o nome que aparece nos rankings. Precisa ser único e diferente do seu e-mail (seu e-mail nunca é exibido).">
         <form onSubmit={saveName} className="space-y-3">
           <div>
@@ -192,6 +203,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUserChange, onDeleted, onBack
           <li>Seu cadastro, pontuações, partidas e progresso em todos os jogos são apagados.</li>
           <li>Você sai de todos os rankings imediatamente.</li>
           <li>Seu e-mail e nome de usuário ficam livres para novos cadastros.</li>
+          {premium?.active && <li><strong>Sua assinatura Premium é cancelada</strong> antes de a conta ser apagada.</li>}
         </ul>
         <form onSubmit={removeAccount} className="space-y-3">
           <div>

@@ -1,12 +1,15 @@
 import { HttpError, sql } from './_lib/db.js';
 import { APP_SETTINGS, isAppSettingEnabled, listGames } from './_lib/games.js';
 import { GAME_SLUGS, requireAdmin, requireSession, route } from './_lib/http.js';
+import { premiumState } from './_lib/premium.js';
 
-// GET: qualquer usuário logado vê os jogos habilitados e se os anúncios estão ligados.
-// POST: só administrador altera -> { game, enabled } (jogo) ou { setting: "ads", enabled } (recurso do app).
+// GET: qualquer usuário logado vê os jogos habilitados, se os anúncios estão ligados e a situação do Premium.
+// POST: só administrador altera -> { game, enabled } (jogo) ou { setting: "ads" | "premium", enabled } (recurso do app).
 export default route(['GET', 'POST'], async (req) => {
+  let session;
   if (req.method === 'POST') {
     const admin = await requireAdmin(req);
+    session = admin;
     const { game, setting, enabled } = req.body ?? {};
     if (typeof enabled !== 'boolean') throw new HttpError(400, 'Valor inválido.');
 
@@ -24,7 +27,11 @@ export default route(['GET', 'POST'], async (req) => {
         ON CONFLICT (game) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now(), updated_by = EXCLUDED.updated_by`;
     }
   } else {
-    await requireSession(req);
+    session = await requireSession(req);
   }
-  return { games: await listGames(), ads: { enabled: await isAppSettingEnabled('ads') } };
+  return {
+    games: await listGames(),
+    ads: { enabled: await isAppSettingEnabled('ads') },
+    premium: await premiumState(session),
+  };
 });

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { ADS, AdPlacement, GAMES } from '../config';
-import { AppSettings, setAdsEnabled, setGameEnabled } from '../services/api';
+import { AppSettings, PremiumState, setAdsEnabled, setGameEnabled, setPremiumEnabled } from '../services/api';
 import { GameSetting } from '../types';
 
 interface AdminSettingsProps {
   games: GameSetting[];
   adsEnabled: boolean;
+  premium: PremiumState | null;
   onChange: (settings: AppSettings) => void;
   onBack: () => void;
 }
@@ -28,7 +29,7 @@ const PLACEMENTS: { key: AdPlacement; label: string; variable: string }[] = [
   { key: 'result', label: 'Depois de concluir um desafio', variable: 'VITE_ADSENSE_SLOT_RESULT' },
 ];
 
-const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, onChange, onBack }) => {
+const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premium, onChange, onBack }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const state = new Map(games.map((g) => [g.slug, g]));
@@ -150,6 +151,58 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, onChan
           </ul>
           <p className="text-xs text-slate-500">
             Alterar variáveis exige um novo deploy na Vercel. O interruptor acima vale na hora, sem deploy.
+          </p>
+        </div>
+      </section>
+
+      <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        <header className="p-6 border-b border-slate-100">
+          <h2 className="text-xl font-extrabold text-ink-800">Plano Premium</h2>
+          <p className="text-sm text-slate-500">Assinatura mensal (Stripe) que remove os anúncios e mostra o selo ⭐. Não dá pontos extras.</p>
+        </header>
+
+        <div className="flex items-center gap-4 p-5">
+          <div className="flex-1 min-w-0">
+            <p className={`font-extrabold ${premium?.enabled ? 'text-ink-800' : 'text-slate-400'}`}>Oferecer o plano Premium</p>
+            <p className="text-xs text-slate-400">
+              {!premium?.enabled
+                ? 'Desligado: ninguém vê a oferta nem consegue assinar.'
+                : premium.configured
+                  ? 'Ligado: o plano aparece para os jogadores.'
+                  : 'Ligado, mas sem efeito: faltam as chaves do Stripe no servidor (veja abaixo).'}
+            </p>
+          </div>
+          <Switch
+            on={Boolean(premium?.enabled)} disabled={busy !== null || !premium}
+            label={`${premium?.enabled ? 'Desligar' : 'Ligar'} plano Premium`}
+            onToggle={() => save('premium', () => setPremiumEnabled(!premium?.enabled))}
+          />
+        </div>
+
+        <div className="border-t border-slate-100 p-5 bg-slate-50 text-sm space-y-3">
+          <p className="font-extrabold text-ink-800">
+            Assinantes ativos: <span className="text-brand-700">{premium?.subscribers ?? 0}</span>
+          </p>
+          <ul className="space-y-1.5 text-xs">
+            <li className="flex items-start gap-2">
+              <span aria-hidden="true">{premium?.configured ? '✅' : '⚠️'}</span>
+              <span className="text-slate-600">
+                Variáveis do servidor (Vercel):{' '}
+                <code className="font-bold">STRIPE_SECRET_KEY</code>, <code className="font-bold">STRIPE_PRICE_ID</code> e{' '}
+                <code className="font-bold">STRIPE_WEBHOOK_SECRET</code> — {premium?.configured ? 'detectadas' : 'faltando (o plano não é oferecido sem elas)'}
+              </span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span aria-hidden="true">🔗</span>
+              <span className="text-slate-600">
+                No Stripe, cadastre o webhook em <code className="font-bold">{window.location.origin}/api/billing</code> com os eventos{' '}
+                <code className="font-bold">customer.subscription.created</code>, <code className="font-bold">customer.subscription.updated</code> e{' '}
+                <code className="font-bold">customer.subscription.deleted</code>.
+              </span>
+            </li>
+          </ul>
+          <p className="text-xs text-slate-500">
+            Desligar o interruptor encerra só as <strong>novas</strong> assinaturas: quem já assina mantém os benefícios e continua podendo gerenciar ou cancelar.
           </p>
         </div>
       </section>

@@ -21,10 +21,10 @@ globalThis.__pg = pg;
 
 const shim = `export const sql = (...a) => globalThis.__sql(...a);
 export const assertDb = () => {};
-export class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }`;
+export class HttpError extends Error { constructor(status, message, expose = false) { super(message); this.status = status; this.expose = expose; } }`;
 writeFileSync(path.join(out, 'db-shim.js'), shim);
 
-const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'auth/logout', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings'];
+const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'billing', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings'];
 await build({
   entryPoints: Object.fromEntries(names.map((n) => [n, path.join(root, 'api', `${n}.ts`)])),
   outdir: out, bundle: true, format: 'esm', platform: 'node', packages: 'external',
@@ -235,7 +235,7 @@ assert.equal(rank.daily[0].username, 'ana');
 assert.equal(rank.daily[0].solved, 31, 'ranking conta desafios resolvidos (sem repetições)');
 const prog = await progressOf();
 assert.deepEqual(prog.memory, { easy: 10, medium: 20, hard: 1 });
-await ok('auth/logout');
+await ok('profile', { body: { action: 'logout' } });
 
 // --- erros de configuração não vazam para o cliente
 const saved = process.env.JWT_SECRET;
@@ -442,6 +442,158 @@ const memoryToggle = await ok('settings', { body: { game: 'memory', enabled: fal
 assert.equal(memoryToggle.games.find((g) => g.slug === 'memory').enabled, false);
 assert.equal(memoryToggle.ads.enabled, false, 'alternar jogo não mexe nos anúncios');
 await ok('settings', { body: { game: 'memory', enabled: true } });
+
+// ===================== Plano Premium (Stripe simulado) =====================
+const { createHmac } = await import('node:crypto');
+const { Readable } = await import('node:stream');
+process.env.STRIPE_SECRET_KEY = 'sk_test_x'; process.env.STRIPE_PRICE_ID = 'price_123'; process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+const stripeCalls = []; let stripeFail = false;
+globalThis.fetch = async (url, init = {}) => {
+  const path = String(url).replace('https://api.stripe.com/v1', '');
+  const body = Object.fromEntries(new URLSearchParams(init.body ?? ''));
+  stripeCalls.push({ method: init.method, path, body, headers: init.headers });
+  const json = (status, data) => ({ ok: status < 400, status, json: async () => data });
+  if (stripeFail) return json(500, { error: { message: 'falha simulada' } });
+  if (path === '/customers') return json(200, { id: 'cus_' + body['metadata[user_id]'].slice(0, 8) });
+  if (path === '/checkout/sessions') return json(200, { id: 'cs_1', url: 'https://checkout.stripe.test/cs_1' });
+  if (path === '/billing_portal/sessions') return json(200, { url: 'https://billing.stripe.test/portal' });
+  if (init.method === 'DELETE' && path.startsWith('/subscriptions/')) return json(200, { id: path.split('/')[2], status: 'canceled' });
+  return json(404, { error: { message: 'não simulado' } });
+};
+const now = Math.floor(Date.now() / 1000);
+const sign = (raw, secret = 'whsec_test', t = now) => `t=${t},v1=${createHmac('sha256', secret).update(`${t}.${raw}`).digest('hex')}`;
+const hook = async (event, { signature, secret, t, raw } = {}) => {
+  const body = raw ?? JSON.stringify(event);
+  const req = Object.assign(Readable.from([Buffer.from(body)]), { method: 'POST', headers: { 'stripe-signature': signature ?? sign(body, secret, t), 'content-type': 'application/json' }, query: {}, socket: {} });
+  const res = { headers: {}, statusCode: 200, setHeader() {}, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
+  await h.billing(req, res);
+  return res;
+};
+const subEvent = (id, type, customer, userId, over = {}, created = now) => ({
+  id, type, created,
+  data: { object: { id: 'sub_1', customer, status: 'active', cancel_at_period_end: false, metadata: { user_id: userId },
+    items: { data: [{ price: { id: 'price_123' }, current_period_end: now + 86400 * 30 }] }, ...over } },
+});
+const flag = async (key, enabled) => ok('settings', { body: { setting: key, enabled } });
+
+cookie = ''; await ok('auth/register', reg2({ username: 'pam', email: 'pam@x.com', password: 'senha-forte-5' }));
+const pamCookie = cookie;
+const pamId = (await pg.query(`SELECT id FROM users WHERE username='pam'`)).rows[0].id;
+const adminC = anaCookie; // ana é admin neste ponto
+await pg.query(`UPDATE users SET role='admin' WHERE username='ana'`);
+await pg.query(`INSERT INTO scores (user_id, game, tier, points, level) VALUES ($1,'sudoku','easy',100,1)`, [pamId]);
+
+// desligado por padrão: ninguém vê oferta e o checkout é recusado
+cookie = pamCookie;
+let ps = (await ok('settings', { method: 'GET' })).premium;
+assert.deepEqual(ps, { available: false, active: false, status: null, renewsAt: null, cancelAtPeriodEnd: false }, 'usuário comum não recebe dados de configuração');
+assert.equal(await code('billing', { body: { action: 'checkout' } }), 403, 'checkout recusado com o plano desligado');
+cookie = adminC;
+let admin = (await ok('settings', { method: 'GET' })).premium;
+assert.equal(admin.enabled, false); assert.equal(admin.configured, true); assert.equal(admin.subscribers, 0); assert.equal(admin.available, false);
+assert.equal((await flag('premium', true)).premium.available, true, 'ligado + Stripe configurado = disponível');
+const keep = process.env.STRIPE_PRICE_ID; delete process.env.STRIPE_PRICE_ID;
+admin = (await ok('settings', { method: 'GET' })).premium;
+assert.deepEqual([admin.enabled, admin.configured, admin.available], [true, false, false], 'sem a chave do Stripe, não é oferecido mesmo ligado');
+cookie = pamCookie; assert.equal(await code('billing', { body: { action: 'checkout' } }), 403);
+process.env.STRIPE_PRICE_ID = keep;
+
+// checkout: cria cliente (1x) e sessão; só chama a API do Stripe com os dados certos
+assert.equal(await code('billing', { method: 'GET' }), 405);
+const co = await ok('billing', { body: { action: 'checkout' } });
+assert.equal(co.url, 'https://checkout.stripe.test/cs_1');
+const custCall = stripeCalls.find((c) => c.path === '/customers');
+assert.equal(custCall.body.email, 'pam@x.com'); assert.equal(custCall.headers['Idempotency-Key'], `customer-${pamId}`);
+assert.match(custCall.headers.Authorization, /^Bearer sk_test_x$/);
+const sess = stripeCalls.find((c) => c.path === '/checkout/sessions').body;
+assert.equal(sess.mode, 'subscription'); assert.equal(sess['line_items[0][price]'], 'price_123'); assert.equal(sess['line_items[0][quantity]'], '1');
+assert.equal(sess.client_reference_id, pamId); assert.equal(sess['subscription_data[metadata][user_id]'], pamId);
+assert.match(sess.success_url, /^https:\/\/app\.test\/\?premium=success$/);
+const customerId = (await pg.query(`SELECT stripe_customer_id, status FROM subscriptions WHERE user_id=$1`, [pamId])).rows[0];
+assert.equal(customerId.status, 'none');
+await ok('billing', { body: { action: 'checkout' } });
+assert.equal(stripeCalls.filter((c) => c.path === '/customers').length, 1, 'cliente do Stripe criado uma única vez');
+assert.equal((await ps) && (await ok('settings', { method: 'GET' })).premium.active, false, 'ainda não é Premium antes do pagamento');
+
+// webhook: assinatura obrigatória e válida
+const created = subEvent('evt_1', 'customer.subscription.created', customerId.stripe_customer_id, pamId);
+assert.equal((await hook(created, { secret: 'whsec_errado' })).statusCode, 400, 'assinatura de outro segredo');
+assert.equal((await hook(created, { t: now - 3600 })).statusCode, 400, 'timestamp antigo (replay)');
+assert.equal((await hook(created, { signature: sign(JSON.stringify({ ...created, id: 'evt_x' })) })).statusCode, 400, 'corpo adulterado');
+assert.equal((await hook(created, { signature: 't=abc,v1=00' })).statusCode, 400, 'cabeçalho malformado');
+assert.equal((await ok('settings', { method: 'GET' })).premium.active, false, 'webhook inválido não ativa nada');
+assert.equal((await hook(created)).statusCode, 200);
+ps = (await ok('settings', { method: 'GET' })).premium;
+assert.equal(ps.active, true); assert.equal(ps.status, 'active'); assert.ok(ps.renewsAt && new Date(ps.renewsAt) > new Date());
+assert.equal(ps.cancelAtPeriodEnd, false);
+assert.equal(await code('billing', { body: { action: 'checkout' } }), 409, 'já é Premium');
+// idempotência e eventos fora de ordem
+assert.equal((await hook(created)).statusCode, 200);
+assert.equal((await pg.query(`SELECT count(*)::int n FROM stripe_events WHERE id='evt_1'`)).rows[0].n, 1, 'evento repetido não é processado de novo');
+assert.equal((await hook(subEvent('evt_2', 'customer.subscription.updated', customerId.stripe_customer_id, pamId, { cancel_at_period_end: true }, now + 10))).statusCode, 200);
+assert.equal((await ok('settings', { method: 'GET' })).premium.cancelAtPeriodEnd, true, 'cancelamento agendado refletido');
+await hook(subEvent('evt_old', 'customer.subscription.updated', customerId.stripe_customer_id, pamId, { status: 'canceled', cancel_at_period_end: false }, now - 100));
+ps = (await ok('settings', { method: 'GET' })).premium;
+assert.deepEqual([ps.active, ps.cancelAtPeriodEnd], [true, true], 'evento antigo que chega atrasado é ignorado');
+assert.equal((await hook({ id: 'evt_other', type: 'invoice.paid', created: now, data: { object: {} } })).statusCode, 200, 'eventos desconhecidos são aceitos e ignorados');
+// selo nos rankings
+const rk = (await ok('ranking', { method: 'GET', query: { game: 'sudoku' } })).daily;
+assert.equal(rk.find((r) => r.username === 'pam').premium, true);
+assert.ok(rk.filter((r) => r.username !== 'pam').every((r) => r.premium === false), 'só assinante tem selo');
+// portal
+assert.equal((await ok('billing', { body: { action: 'portal' } })).url, 'https://billing.stripe.test/portal');
+assert.equal(stripeCalls.filter((c) => c.path === '/billing_portal/sessions').pop().body.customer, customerId.stripe_customer_id);
+cookie = adminC; assert.equal(await code('billing', { body: { action: 'portal' } }), 404, 'quem nunca assinou não tem portal');
+assert.equal(await code('billing', { body: { action: 'xyz' } }), 400);
+cookie = ''; assert.equal(await code('billing', { body: { action: 'checkout' } }), 401, 'precisa estar logado');
+
+// admin para de vender: quem já assina mantém tudo; novos não conseguem assinar
+cookie = adminC; assert.equal((await flag('premium', false)).premium.available, false);
+cookie = pamCookie;
+ps = (await ok('settings', { method: 'GET' })).premium;
+assert.deepEqual([ps.available, ps.active], [false, true], 'assinante continua Premium com a venda desligada');
+assert.equal((await ok('billing', { body: { action: 'portal' } })).url.startsWith('https://billing'), true, 'e continua podendo gerenciar/cancelar');
+assert.equal((await ok('ranking', { method: 'GET', query: { game: 'sudoku' } })).daily.find((r) => r.username === 'pam').premium, true);
+cookie = adminC; assert.equal(await code('billing', { body: { action: 'checkout' } }), 403);
+await flag('premium', true);
+// fim da assinatura
+assert.equal((await hook(subEvent('evt_3', 'customer.subscription.deleted', customerId.stripe_customer_id, pamId, {}, now + 20))).statusCode, 200);
+cookie = pamCookie; ps = (await ok('settings', { method: 'GET' })).premium;
+assert.deepEqual([ps.active, ps.status], [false, 'canceled'], 'assinatura cancelada perde os benefícios');
+assert.equal((await ok('ranking', { method: 'GET', query: { game: 'sudoku' } })).daily.find((r) => r.username === 'pam').premium, false);
+await hook(subEvent('evt_4', 'customer.subscription.updated', customerId.stripe_customer_id, pamId, { status: 'trialing' }, now + 30));
+assert.equal((await ok('settings', { method: 'GET' })).premium.active, true, 'trial também conta');
+assert.equal((await ok('settings', { method: 'GET' })).premium.status, 'trialing');
+cookie = adminC; assert.equal((await ok('settings', { method: 'GET' })).premium.subscribers, 1, 'admin vê quantos assinantes');
+
+// excluir conta cancela a assinatura no Stripe; se o cancelamento falhar, não exclui
+cookie = ''; await ok('auth/register', reg2({ username: 'quin', email: 'quin@x.com', password: 'senha-forte-6' }));
+const quinId = (await pg.query(`SELECT id FROM users WHERE username='quin'`)).rows[0].id;
+await pg.query(`INSERT INTO subscriptions (user_id, stripe_customer_id, stripe_subscription_id, status) VALUES ($1,'cus_quin','sub_quin','active')`, [quinId]);
+await pg.query(`DELETE FROM auth_attempts`);
+stripeFail = true;
+assert.equal(await code('profile', { body: { action: 'delete', password: 'senha-forte-6', confirm: 'EXCLUIR' } }), 502, 'Stripe falhou: a exclusão é interrompida');
+assert.equal((await pg.query(`SELECT count(*)::int n FROM users WHERE id=$1`, [quinId])).rows[0].n, 1, 'usuário continua existindo');
+stripeFail = false;
+const savedKey = process.env.STRIPE_SECRET_KEY; delete process.env.STRIPE_SECRET_KEY; delete process.env.STRIPE_WEBHOOK_SECRET;
+assert.equal(await code('profile', { body: { action: 'delete', password: 'senha-forte-6', confirm: 'EXCLUIR' } }), 503, 'Stripe sem configuração: não exclui');
+process.env.STRIPE_SECRET_KEY = savedKey; process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+assert.equal(await code('profile', { body: { action: 'delete', password: 'senha-forte-6', confirm: 'EXCLUIR' } }), 200);
+const cancel = stripeCalls.filter((c) => c.method === 'DELETE').pop();
+assert.equal(cancel.path, '/subscriptions/sub_quin', 'assinatura cancelada no Stripe antes de apagar');
+assert.equal((await pg.query(`SELECT count(*)::int n FROM users WHERE id=$1`, [quinId])).rows[0].n + (await pg.query(`SELECT count(*)::int n FROM subscriptions WHERE user_id=$1`, [quinId])).rows[0].n, 0, 'usuário e assinatura apagados');
+// quem nunca assinou exclui sem tocar no Stripe
+cookie = ''; await ok('auth/register', reg2({ username: 'rui', email: 'rui@x.com', password: 'senha-forte-7' }));
+const callsBefore = stripeCalls.length; await pg.query(`DELETE FROM auth_attempts`);
+assert.equal(await code('profile', { body: { action: 'delete', password: 'senha-forte-7', confirm: 'EXCLUIR' } }), 200);
+assert.equal(stripeCalls.length, callsBefore, 'sem assinatura, nenhuma chamada ao Stripe');
+// webhook sem configuração
+delete process.env.STRIPE_WEBHOOK_SECRET;
+assert.equal((await hook(created)).statusCode, 503);
+process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+// logout agora é uma ação do perfil
+cookie = pamCookie; const loggedOut = await call('profile', { body: { action: 'logout' } });
+assert.equal(loggedOut.statusCode, 200); assert.match(loggedOut.headers['Set-Cookie'], /Max-Age=0/);
 
 console.log('API OK');
 process.exit(0);

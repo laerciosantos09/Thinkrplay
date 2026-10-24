@@ -10,6 +10,7 @@ import MastermindGame from './pages/MastermindGame';
 import GlobalRanking from './pages/GlobalRanking';
 import AdminSettings from './pages/AdminSettings';
 import Profile from './pages/Profile';
+import Premium from './pages/Premium';
 import LegalPage, { LEGAL_ROUTES } from './pages/Legal';
 import TermsGate from './components/TermsGate';
 import { SUPPORT_EMAIL } from './config';
@@ -17,7 +18,7 @@ import { AdsProvider } from './components/ads/AdsContext';
 import ConsentBanner from './components/ads/ConsentBanner';
 import Navbar from './components/Navbar';
 import { GameSetting, User } from './types';
-import { fetchProfile, fetchSettings, logout as apiLogout, setUnauthorizedHandler } from './services/api';
+import { AppSettings, PremiumState, fetchProfile, fetchSettings, logout as apiLogout, setUnauthorizedHandler } from './services/api';
 
 const GAME_PAGES: Record<string, React.FC<{ onBack: () => void }>> = {
   sudoku: SudokuGame,
@@ -34,6 +35,9 @@ const MainApp: React.FC = () => {
   const [page, setPage] = useState('dashboard');
   const [games, setGames] = useState<GameSetting[] | null>(null);
   const [adsEnabled, setAdsEnabled] = useState(false);
+  const [premium, setPremium] = useState<PremiumState | null>(null);
+  // Voltou do pagamento do Stripe (?premium=success): abre a tela do Premium aguardando a confirmação.
+  const [justPaid, setJustPaid] = useState(() => new URLSearchParams(window.location.search).get('premium') === 'success');
 
   const clear = useCallback(() => {
     setUser(null);
@@ -56,15 +60,24 @@ const MainApp: React.FC = () => {
   }, []);
 
   // Jogos habilitados: recarrega ao entrar e a cada troca de tela (o admin pode ter mudado algo).
+  const applySettings = useCallback((r: AppSettings) => {
+    setGames(r.games);
+    setAdsEnabled(r.ads.enabled);
+    setPremium(r.premium);
+  }, []);
+
+  const refreshSettings = useCallback(() => fetchSettings().then(applySettings), [applySettings]);
+
   useEffect(() => {
     if (!user) return;
-    fetchSettings()
-      .then((r) => {
-        setGames(r.games);
-        setAdsEnabled(r.ads.enabled);
-      })
-      .catch(() => setGames((g) => g ?? [])); // sem resposta: o servidor continua barrando jogo desativado; anúncios ficam como estavam
-  }, [user, page]);
+    refreshSettings().catch(() => setGames((g) => g ?? [])); // sem resposta: o servidor continua barrando jogo desativado
+  }, [user, page, refreshSettings]);
+
+  useEffect(() => {
+    if (!user || !justPaid) return;
+    setPage('premium');
+    window.history.replaceState(null, '', '/'); // limpa o ?premium=success da barra de endereço
+  }, [user, justPaid]);
 
   // Jogo sem informação conta como habilitado.
   const isEnabled = (slug: string) => games?.find((g) => g.slug === slug)?.enabled !== false;
@@ -89,19 +102,23 @@ const MainApp: React.FC = () => {
   const Game = GAME_PAGES[page];
 
   return (
-    <AdsProvider enabled={adsEnabled}>
+    <AdsProvider enabled={adsEnabled && !premium?.active}>
     <div className="min-h-screen bg-slate-50">
       <Navbar user={user} onLogout={logout} onHome={home} onRanking={() => setPage('ranking')} onProfile={() => setPage('profile')}
-        onSettings={isAdmin ? () => setPage('settings') : undefined} />
+        onSettings={isAdmin ? () => setPage('settings') : undefined}
+        onPremium={premium && (premium.available || premium.active) ? () => setPage('premium') : undefined}
+        premiumActive={premium?.active} />
       <main className="container mx-auto px-4 py-6 sm:py-8">
         {Game && isEnabled(page) ? (
           <Game key={page} onBack={home} />
         ) : page === 'ranking' ? (
           <GlobalRanking onBack={home} isEnabled={isEnabled} />
         ) : page === 'profile' ? (
-          <Profile user={user} onUserChange={setUser} onDeleted={clear} onBack={home} />
+          <Profile user={user} premium={premium} onPremium={() => setPage('premium')} onUserChange={setUser} onDeleted={clear} onBack={home} />
+        ) : page === 'premium' && premium ? (
+          <Premium premium={premium} justPaid={justPaid} onRefresh={refreshSettings} onBack={() => { setJustPaid(false); home(); }} />
         ) : page === 'settings' && isAdmin ? (
-          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} onChange={(s) => { setGames(s.games); setAdsEnabled(s.ads.enabled); }} onBack={home} />
+          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} premium={premium} onChange={applySettings} onBack={home} />
         ) : (
           <Dashboard onSelectGame={setPage} onGoToRanking={() => setPage('ranking')} isEnabled={isEnabled} loading={games === null} />
         )}

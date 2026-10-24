@@ -3,6 +3,8 @@ import { HttpError, sql } from './_lib/db.js';
 import { clientIp, endSession, requireSession, route, startSession, str } from './_lib/http.js';
 import { assertNotLocked, recordFailure } from './_lib/limit.js';
 import { publicUser } from './_lib/user.js';
+import { ACTIVE_STATUSES, getSubscription } from './_lib/premium.js';
+import { stripe, stripeConfigured } from './_lib/stripe.js';
 import { LEGAL_VERSION, RESERVED_USERNAMES, USERNAME_PATTERN } from '../lib/legal.js';
 
 const loadUser = async (id: string) => {
@@ -24,8 +26,13 @@ const checkPassword = async (user: Record<string, any>, password: string, ip: st
 };
 
 // GET: dados do próprio usuário (também usado para saber se há alguém logado).
-// POST { action }: username | password | delete | accept_terms
+// POST { action }: logout | username | password | delete | accept_terms
 export default route(['GET', 'POST'], async (req, res) => {
+  // Sair não exige sessão válida: sempre limpa o cookie.
+  if (req.method === 'POST' && req.body?.action === 'logout') {
+    endSession(res);
+    return { ok: true };
+  }
   const session = await requireSession(req);
   const user = await loadUser(session.id);
   if (req.method === 'GET') return { user: publicUser(user), legalVersion: LEGAL_VERSION };
@@ -71,6 +78,14 @@ export default route(['GET', 'POST'], async (req, res) => {
       await checkPassword(user, password, ip, 'Senha incorreta.');
       if (String(body.confirm ?? '').trim().toUpperCase() !== 'EXCLUIR') {
         throw new HttpError(400, 'Digite EXCLUIR para confirmar.');
+      }
+      // Assinatura ativa: cancela no Stripe ANTES de apagar. Se não der, interrompe (ninguém pode continuar sendo cobrado).
+      const sub = await getSubscription(user.id);
+      if (sub?.stripe_subscription_id && (ACTIVE_STATUSES.includes(sub.status) || sub.status === 'past_due')) {
+        if (!stripeConfigured()) {
+          throw new HttpError(503, 'Não foi possível cancelar sua assinatura agora. Tente novamente em instantes.', true);
+        }
+        await stripe('DELETE', `/subscriptions/${sub.stripe_subscription_id}`, { allowNotFound: true });
       }
       // Apaga o usuário e, em cascata, pontuações, partidas e progresso. Não deixa o app sem nenhum admin.
       const rows = await sql`

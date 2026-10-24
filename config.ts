@@ -23,6 +23,9 @@ export const ADS = {
   test: import.meta.env.VITE_ADSENSE_TEST === 'true', // anúncios de teste (não contam impressões nem cliques)
 };
 
+// Texto do preço mostrado na tela do Premium (ex.: "R$ 9,90 por mês"). Deve ser igual ao preço cadastrado no Stripe.
+export const PREMIUM_PRICE_LABEL: string | undefined = import.meta.env.VITE_PREMIUM_PRICE_LABEL || undefined;
+
 export const TIER_LABELS: Record<Tier, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
 export const GAMES: GameInfo[] = [

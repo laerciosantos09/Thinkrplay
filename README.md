@@ -53,6 +53,33 @@ Cada jogo tem 3 níveis (**Easy**, **Medium**, **Hard**) com **500 desafios** ca
 - São calculados no servidor a cada consulta a partir das pontuações: cada desafio concluído entra no ranking imediatamente. A tela atualiza sozinha a cada 20 s enquanto está aberta (e na hora, quando é você quem conclui).
 - Mostram o top 10 e, para quem está logado, a própria posição mesmo fora do top 10.
 
+## Plano Premium (Stripe)
+
+Assinatura **mensal** que **remove os anúncios** e mostra o **selo ⭐** no perfil e nos rankings. **Não dá pontos extras** (os rankings seguem iguais para todos). Fica **desligado por padrão**; o administrador liga em **Configurações → Plano Premium**.
+
+- O interruptor controla a **venda**: ligado + chaves do Stripe configuradas = o plano aparece. Desligado, ninguém assina, mas **quem já assina mantém os benefícios** e pode gerenciar/cancelar.
+- Pagamento pela página do **Stripe Checkout**; cancelamento e troca de cartão pelo **portal do Stripe**. A confirmação chega por **webhook assinado** (`POST /api/billing`, conferido com HMAC e com proteção contra repetição e eventos fora de ordem).
+- **Excluir a conta cancela a assinatura** no Stripe antes de apagar; se o cancelamento falhar, a exclusão é interrompida.
+- Vale para a **web**. No app instalado das lojas (Apple/Google), assinatura de conteúdo digital exige a compra interna da loja, que é outro fluxo.
+
+| Variável | Onde | O que é |
+| --- | --- | --- |
+| `STRIPE_SECRET_KEY` | servidor (Vercel) | chave secreta (`sk_test_...` para testar, `sk_live_...` em produção). **Sensitive.** |
+| `STRIPE_PRICE_ID` | servidor | ID do preço recorrente (`price_...`) do produto Premium |
+| `STRIPE_WEBHOOK_SECRET` | servidor | segredo do endpoint de webhook (`whsec_...`). **Sensitive.** |
+| `APP_URL` | servidor, opcional | endereço do site (`https://seudominio.com`) usado nas URLs de retorno; sem ela usa o endereço da requisição |
+| `VITE_PREMIUM_PRICE_LABEL` | build, opcional | texto do preço exibido na página (ex.: `R$ 9,90 por mês`); deve bater com o preço do Stripe |
+
+**Como configurar**
+1. No Stripe, crie um **produto** "Thinkrplay Premium" com **preço recorrente mensal** em BRL e copie o `price_...`.
+2. Em *Developers → Webhooks*, crie um endpoint `https://seudominio.com/api/billing` com os eventos `customer.subscription.created`, `customer.subscription.updated` e `customer.subscription.deleted`, e copie o `whsec_...`.
+3. Ative o **portal do cliente** em *Settings → Billing → Customer portal* (permita cancelar).
+4. Defina as variáveis na Vercel e faça um novo deploy. Comece em **modo de teste** (`sk_test_...`, cartão `4242 4242 4242 4242`).
+5. Em **Configurações → Plano Premium** o painel mostra se as chaves foram detectadas; ligue o interruptor.
+6. Confira o webhook: no Stripe, *Send test webhook* deve responder **200**. Localmente: `stripe listen --forward-to localhost:3000/api/billing`.
+
+> O endpoint do webhook desliga o leitor automático de corpo (`bodyParser: false`) para conferir a assinatura sobre o corpo bruto. Confirme com o teste do passo 6 depois do primeiro deploy.
+
 ## Anúncios (Google AdSense)
 
 A estrutura já está pronta e **desligada por padrão**: nenhum script do Google é carregado até que (1) as variáveis abaixo existam, (2) o administrador ligue o interruptor em **Configurações → Anúncios** e (3) o usuário escolha no aviso de anúncios.
@@ -103,6 +130,7 @@ O SQL fica em **migrações numeradas** (`db/migrations/`). Cada uma roda sozinh
 | `db/migrations/003_game_settings.sql` | Configurações do admin (jogos ativos/desativados) |
 | `db/migrations/004_profile_terms_rankings.sql` | Perfil (versão de sessão), aceite dos Termos e índice do ranking geral |
 | `db/migrations/005_app_settings.sql` | Configurações gerais do app (interruptor dos anúncios) |
+| `db/migrations/006_premium.sql` | Plano Premium: `subscriptions` e `stripe_events` |
 | `db/schema.sql` | Tudo junto, para banco novo. **Gerado** das migrações (`npm run db:schema`) |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
 | `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas |

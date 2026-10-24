@@ -45,19 +45,36 @@ export const changePassword = (currentPassword: string, newPassword: string) =>
 export const deleteAccount = (password: string, confirm: string) =>
   request<{ ok: true }>('profile', { body: { action: 'delete', password, confirm } });
 export const acceptTerms = () => request<{ user: User }>('profile', { body: { action: 'accept_terms' } });
-export const logout = () => request<{ ok: true }>('auth/logout', { body: {} });
+export const logout = () => request<{ ok: true }>('profile', { body: { action: 'logout' } });
 export const recoverPassword = (body: { email: string; secretWord: string; newPassword: string }) =>
   request<{ ok: true }>('auth/recover', { body });
 
 // Desafios resolvidos por jogo e nível.
 // Configurações do app: jogos habilitados e anúncios (qualquer usuário logado lê; só admin altera).
+export interface PremiumState {
+  available: boolean; // dá para assinar agora (ligado pelo admin e Stripe configurado)
+  active: boolean; // este usuário é Premium
+  status: string | null;
+  renewsAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  // só para administradores:
+  enabled?: boolean;
+  configured?: boolean;
+  subscribers?: number;
+}
 export interface AppSettings {
   games: GameSetting[];
   ads: { enabled: boolean };
+  premium: PremiumState;
 }
 export const fetchSettings = () => request<AppSettings>('settings');
 export const setGameEnabled = (game: string, enabled: boolean) => request<AppSettings>('settings', { body: { game, enabled } });
 export const setAdsEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'ads', enabled } });
+export const setPremiumEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'premium', enabled } });
+
+// Premium: abre o pagamento / o portal de assinatura do Stripe (devolvem a URL para redirecionar).
+export const startCheckout = () => request<{ url: string }>('billing', { body: { action: 'checkout' } });
+export const openBillingPortal = () => request<{ url: string }>('billing', { body: { action: 'portal' } });
 
 export const fetchProgress = () => request<Record<string, Partial<TierProgress>>>('progress');
 export const fetchRanking = (game: string) =>

@@ -109,7 +109,7 @@ export const route = (methods: string[], handler: Handler) =>
       res.setHeader('Cache-Control', 'no-store');
       res.status(200).json(body);
     } catch (err) {
-      if (err instanceof HttpError && err.status < 500) {
+      if (err instanceof HttpError && (err.status < 500 || err.expose)) {
         res.status(err.status).json({ error: err.message });
       } else {
         // Detalhes de configuração/infraestrutura ficam só no log do servidor, nunca na resposta.
