@@ -1,11 +1,18 @@
+-- Thinkrplay: estrutura do banco (Postgres/Neon). Pode ser executado várias vezes sem problema.
+-- Neon: SQL Editor > cole este arquivo inteiro > Run. Ou: npm run db:migrate
+
 CREATE TABLE IF NOT EXISTS users (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   username text NOT NULL,
   email text NOT NULL,
   password_hash text NOT NULL,
   secret_hash text NOT NULL,
+  role text NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Bancos criados antes do campo role
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin'));
 
 CREATE UNIQUE INDEX IF NOT EXISTS users_username_key ON users (lower(username));
 

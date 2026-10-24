@@ -27,6 +27,25 @@ Jogos (até 1000 níveis cada, com liberação progressiva): Sudoku, Memória, S
    Alternativamente, a integração Neon da Vercel (Storage) cria `DATABASE_URL` sozinha.
 4. Faça o deploy. No celular, abra o site e use "Adicionar à tela inicial" para instalar.
 
+## Scripts do banco (Neon)
+
+| Arquivo | O que faz |
+| --- | --- |
+| `db/schema.sql` | Cria/atualiza todas as tabelas (pode rodar várias vezes). No Neon: SQL Editor → colar → Run. |
+| `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
+| `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas. |
+| `db/drop_all.sql` | Apaga tudo (só desenvolvimento). |
+
+Criar o admin, de duas formas (a senha nunca vai para arquivo nem para o SQL):
+```bash
+# 1) direto no banco (pergunta e-mail, usuário e senha, com a senha oculta)
+DATABASE_URL="postgres://..." npm run db:admin
+
+# 2) só gerar o SQL para colar no SQL Editor do Neon
+npm run db:admin:sql
+```
+Para trocar a senha do admin, rode o script de novo com o mesmo e-mail.
+
 ## Desenvolvimento local
 
 ```bash

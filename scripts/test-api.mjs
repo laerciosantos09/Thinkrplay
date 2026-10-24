@@ -182,5 +182,29 @@ assert.equal(rank.daily[0].username, 'ana');
 assert.ok(Object.keys(await ok('progress', { method: 'GET' })).includes('sudoku'));
 await ok('auth/logout');
 
+// --- admin criado pelo script (SQL gerado só com hashes) e login pela API
+const { execFileSync } = await import('node:child_process');
+const gen = (password) => execFileSync('node', [path.join(root, 'scripts/create-admin.mjs'), '--sql'], {
+  env: { ...process.env, ADMIN_EMAIL: 'Admin@Teste.com', ADMIN_USERNAME: 'chefe', ADMIN_PASSWORD: password }, encoding: 'utf8' });
+const sqlOut = gen('Senha-Teste-1@');
+assert.ok(!sqlOut.includes('Senha-Teste-1@'), 'SQL não pode conter a senha em texto');
+assert.match(sqlOut, /'\$2[aby]\$11\$/, 'senha deve estar em bcrypt');
+await pg.exec(sqlOut);
+const stored = (await pg.query(`SELECT password_hash, secret_hash, role FROM users WHERE lower(email)='admin@teste.com'`)).rows[0];
+assert.equal(stored.role, 'admin');
+assert.ok(stored.password_hash.startsWith('$2') && !stored.password_hash.includes('Senha-Teste'));
+cookie = '';
+const adminLogin = await ok('auth/login', { body: { email: 'admin@teste.com', password: 'Senha-Teste-1@' } });
+assert.equal(adminLogin.user.role, 'admin');
+assert.equal(await code('auth/login', { body: { email: 'admin@teste.com', password: 'errada-123' } }), 401);
+// rodar de novo troca a senha e mantém um único usuário
+await pg.exec(gen('Outra-Senha-2@'));
+assert.equal((await pg.query(`SELECT count(*)::int n FROM users WHERE lower(email)='admin@teste.com'`)).rows[0].n, 1);
+await pg.query(`DELETE FROM auth_attempts`);
+assert.equal(await code('auth/login', { body: { email: 'admin@teste.com', password: 'Senha-Teste-1@' } }), 401);
+await ok('auth/login', { body: { email: 'admin@teste.com', password: 'Outra-Senha-2@' } });
+// usuário comum nunca vira admin pelo cadastro
+assert.equal((await pg.query(`SELECT role FROM users WHERE username='ana'`)).rows[0].role, 'user');
+
 console.log('API OK');
 process.exit(0);
