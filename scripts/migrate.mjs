@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { neon } from '@neondatabase/serverless';
 
-const url = process.env.DATABASE_URL;
+// Migrações usam a conexão direta (sem pool) quando disponível, como a integração Neon/Vercel recomenda.
+const url = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
 if (!url) {
-  console.error('Defina DATABASE_URL (string de conexão do Neon).');
+  console.error('Defina DATABASE_URL_UNPOOLED ou DATABASE_URL (string de conexão do Neon).');
   process.exit(1);
 }
 

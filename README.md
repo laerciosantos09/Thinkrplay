@@ -24,7 +24,7 @@ Jogos (até 1000 níveis cada, com liberação progressiva): Sudoku, Memória, S
    - `DATABASE_URL` — string do Neon
    - `JWT_SECRET` — segredo aleatório com **32+ caracteres** (`openssl rand -base64 48`). Nunca reaproveite nem publique.
 
-   Alternativamente, a integração Neon da Vercel (Storage) cria `DATABASE_URL` sozinha.
+   Com a integração Neon da Vercel (Storage), `DATABASE_URL` e `DATABASE_URL_UNPOOLED` são criadas sozinhas. A API usa `DATABASE_URL` (com pool); os scripts de migração e de admin preferem `DATABASE_URL_UNPOOLED`. **`JWT_SECRET` não vem da integração: crie manualmente** (Production e Preview) e faça um novo deploy. Marque as variáveis como *Sensitive* na Vercel.
 4. Faça o deploy. No celular, abra o site e use "Adicionar à tela inicial" para instalar.
 
 ## Scripts do banco (Neon)
@@ -46,10 +46,16 @@ npm run db:admin:sql
 ```
 Para trocar a senha do admin, rode o script de novo com o mesmo e-mail.
 
+Para rodar os scripts com as variáveis baixadas da Vercel (Node 20+):
+```bash
+node --env-file=.env.local scripts/migrate.mjs
+node --env-file=.env.local scripts/create-admin.mjs
+```
+
 ## Desenvolvimento local
 
 ```bash
-cp .env.example .env        # preencha DATABASE_URL e JWT_SECRET
+npx vercel env pull .env.local   # baixa DATABASE_URL etc. do projeto (ou: cp .env.example .env e preencha)
 npm install
 npx vercel dev              # serve o front e /api juntos
 npm run typecheck && npm test
