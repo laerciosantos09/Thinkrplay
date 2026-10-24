@@ -22,3 +22,9 @@ export interface GameInfo {
   icon: string;
   color: string;
 }
+
+export interface GameSetting {
+  slug: string;
+  enabled: boolean;
+  updatedAt: string | null;
+}

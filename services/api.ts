@@ -1,4 +1,4 @@
-import { RankingPeriod, Score, User } from '../types';
+import { GameSetting, RankingPeriod, Score, User } from '../types';
 import { Tier, TierProgress } from '../lib/tiers';
 
 let onUnauthorized: () => void = () => {};
@@ -42,6 +42,11 @@ export const recoverPassword = (body: { email: string; secretWord: string; newPa
   request<{ ok: true }>('auth/recover', { body });
 
 // Desafios resolvidos por jogo e nível.
+// Jogos habilitados (qualquer usuário logado lê; só admin altera).
+export const fetchGames = () => request<{ games: GameSetting[] }>('games');
+export const setGameEnabled = (game: string, enabled: boolean) =>
+  request<{ games: GameSetting[] }>('games', { body: { game, enabled } });
+
 export const fetchProgress = () => request<Record<string, Partial<TierProgress>>>('progress');
 export const fetchRanking = (game: string) =>
   request<Record<RankingPeriod, Score[]>>(`ranking?game=${encodeURIComponent(game)}`);

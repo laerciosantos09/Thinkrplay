@@ -5,11 +5,15 @@ import { GAMES } from '../config';
 
 interface GlobalRankingProps {
   onBack: () => void;
+  isEnabled: (slug: string) => boolean;
 }
 
-const GlobalRanking: React.FC<GlobalRankingProps> = ({ onBack }) => {
-  const [selectedGameSlug, setSelectedGameSlug] = useState<string>(GAMES[0].slug);
-  const currentGame = GAMES.find(g => g.slug === selectedGameSlug);
+const GlobalRanking: React.FC<GlobalRankingProps> = ({ onBack, isEnabled }) => {
+  const games = GAMES.filter((g) => isEnabled(g.slug));
+  const [picked, setPicked] = useState<string | null>(null);
+  // Se o jogo escolhido foi desativado, cai no primeiro disponível.
+  const currentGame = games.find((g) => g.slug === picked) ?? games[0];
+  const selectedGameSlug = currentGame?.slug ?? '';
 
   return (
     <div className="max-w-6xl mx-auto animate-fadeIn">
@@ -31,10 +35,10 @@ const GlobalRanking: React.FC<GlobalRankingProps> = ({ onBack }) => {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         {/* Navegação por Jogos */}
         <div className="lg:col-span-1 space-y-2 overflow-x-auto md:overflow-visible flex flex-row md:flex-col pb-4 md:pb-0 gap-2 md:gap-0">
-          {GAMES.map((game) => (
+          {games.map((game) => (
             <button
               key={game.id}
-              onClick={() => setSelectedGameSlug(game.slug)}
+              onClick={() => setPicked(game.slug)}
               className={`
                 flex items-center gap-3 px-6 py-4 rounded-2xl font-bold transition-all w-full text-left whitespace-nowrap
                 ${selectedGameSlug === game.slug 
@@ -64,7 +68,11 @@ const GlobalRanking: React.FC<GlobalRankingProps> = ({ onBack }) => {
               </div>
             </div>
             
-            <RankingTable slug={selectedGameSlug} />
+            {currentGame ? (
+              <RankingTable slug={selectedGameSlug} />
+            ) : (
+              <p className="text-center text-slate-500 py-12">Nenhum jogo disponível no momento.</p>
+            )}
           </div>
           
           <div className="mt-8 bg-brand-600 rounded-3xl p-8 text-white relative overflow-hidden shadow-2xl shadow-brand-100">

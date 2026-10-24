@@ -1,5 +1,6 @@
 import { HttpError } from '../_lib/db.js';
 import { requireSession, route } from '../_lib/http.js';
+import { assertGameEnabled } from '../_lib/games.js';
 import { assertHumanPace, finishPlay, loadPlay } from '../_lib/play.js';
 import { VERIFIERS } from '../../lib/verify.js';
 import { pairsFor } from '../../lib/memory.js';
@@ -12,6 +13,7 @@ export default route(['POST'], async (req) => {
   const session = await requireSession(req);
   const { playId, proof } = req.body ?? {};
   const play = await loadPlay(session.id, playId);
+  await assertGameEnabled(play.game);
   const verify = VERIFIERS[play.game as keyof typeof VERIFIERS];
   if (!verify) throw new HttpError(400, 'Este jogo é validado jogada a jogada.');
 

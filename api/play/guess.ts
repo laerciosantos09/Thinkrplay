@@ -1,5 +1,6 @@
 import { HttpError, sql } from '../_lib/db.js';
 import { requireSession, route } from '../_lib/http.js';
+import { assertGameEnabled } from '../_lib/games.js';
 import { abandonPlay, assertHumanPace, finishPlay, loadPlay } from '../_lib/play.js';
 import { generateSequence } from '../../lib/sequence.js';
 import { configFor, evaluate, generateCode } from '../../lib/mastermind.js';
@@ -12,6 +13,7 @@ export default route(['POST'], async (req) => {
   const session = await requireSession(req);
   const { playId, value, guess } = req.body ?? {};
   const play = await loadPlay(session.id, playId);
+  await assertGameEnabled(play.game);
 
   if (play.game === 'sequence') {
     const round: number = play.state.round ?? 0;
