@@ -2,6 +2,10 @@ import { GameSetting, LoginMethod, LoginProvider, RankingPeriod, Score, User } f
 import { Tier, TierProgress } from '../lib/tiers';
 
 let onUnauthorized: () => void = () => {};
+let onTermsRequired: () => void = () => {};
+export const setTermsRequiredHandler = (fn: () => void) => {
+  onTermsRequired = fn;
+};
 export const setUnauthorizedHandler = (fn: () => void) => {
   onUnauthorized = fn;
 };
@@ -28,6 +32,7 @@ const request = async <T,>(path: string, init: { method?: string; body?: unknown
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith('auth/')) onUnauthorized();
+    if (res.status === 403 && data.code === 'terms_required') onTermsRequired(); // o servidor barrou: volta para a tela de aceite
     throw new ApiError(res.status, data.error ?? 'Algo deu errado.', data);
   }
   return data as T;
@@ -41,10 +46,11 @@ export const login = (email: string, password: string, linkPending = false) =>
 export interface AdminUser {
   id: string; username: string; email: string; role: string; createdAt: string;
   signupMethod: LoginMethod; emailVerified: boolean; loginMethods: LoginMethod[];
+  termsAccepted: boolean; privacyAccepted: boolean;
 }
 export const fetchUsers = (q: string, page: number) =>
   request<{ users: AdminUser[]; total: number; page: number; pageSize: number }>(`profile?users=1&q=${encodeURIComponent(q)}&page=${page}`);
-export const register = (body: { username: string; email: string; password: string; secretWord: string; acceptTerms: boolean }) =>
+export const register = (body: { username: string; email: string; password: string; secretWord: string; acceptTerms: boolean; acceptPrivacy: boolean }) =>
   request<{ user: User }>('auth/register', { body });
 export const updateUsername = (username: string) =>
   request<{ user: User }>('profile', { body: { action: 'username', username } });
@@ -57,7 +63,9 @@ export const unlinkProvider = (provider: LoginProvider) =>
   request<{ ok: true; connections: LoginProvider[] }>('profile', { body: { action: 'unlink', provider } });
 // Quais botões de login social mostrar (público: serve para a tela de login).
 export const fetchProviders = () => request<Record<LoginProvider, boolean>>('oauth/providers');
-export const acceptTerms = () => request<{ user: User }>('profile', { body: { action: 'accept_terms' } });
+// Um flag por documento: manda só o que ainda falta aceitar.
+export const acceptTerms = (docs: { terms?: boolean; privacy?: boolean }) =>
+  request<{ user: User }>('profile', { body: { action: 'accept_terms', ...docs } });
 export const logout = () => request<{ ok: true }>('profile', { body: { action: 'logout' } });
 export const recoverPassword = (body: { email: string; secretWord: string; newPassword: string }) =>
   request<{ ok: true }>('auth/recover', { body });

@@ -7,7 +7,9 @@ export interface User {
   email: string;
   role?: 'user' | 'admin';
   createdAt?: string | null;
-  needsTerms?: boolean; // ainda não aceitou a versão atual dos Termos/Privacidade
+  termsAccepted?: boolean; // flag: Termos de Uso aceitos na versão vigente
+  privacyAccepted?: boolean; // flag: Política de Privacidade aceita na versão vigente
+  needsTerms?: boolean; // falta aceitar um dos dois: o app fica bloqueado até aceitar os dois
   signupMethod?: 'password' | LoginProvider; // por onde a conta foi criada
   loginMethods?: LoginMethod[]; // flags: formas de entrar ativas
   hasPassword?: boolean; // contas criadas pelo Google/Apple começam sem senha

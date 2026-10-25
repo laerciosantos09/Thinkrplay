@@ -21,7 +21,7 @@ import { EnergyProvider } from './components/energy/EnergyContext';
 import Navbar from './components/Navbar';
 import { GameSetting, LoginProvider, User } from './types';
 import { AUTH_ERRORS, AUTH_NOTICES } from './lib/authMessages';
-import { AppSettings, EnergySettings, EnergyState, PremiumState, fetchProfile, fetchSettings, logout as apiLogout, setUnauthorizedHandler } from './services/api';
+import { AppSettings, EnergySettings, EnergyState, PremiumState, fetchProfile, fetchSettings, logout as apiLogout, setTermsRequiredHandler, setUnauthorizedHandler } from './services/api';
 
 const GAME_PAGES: Record<string, React.FC<{ onBack: () => void }>> = {
   sudoku: SudokuGame,
@@ -65,6 +65,8 @@ const MainApp: React.FC = () => {
   }, [clear]);
 
   useEffect(() => setUnauthorizedHandler(clear), [clear]);
+  // O servidor recusou por falta de aceite (ex.: versão nova dos termos): recarrega o perfil e volta para a tela de aceite.
+  useEffect(() => setTermsRequiredHandler(() => { fetchProfile().then((r) => setUser(r.user)).catch(() => {}); }), []);
 
   // A sessão é um cookie HttpOnly; pergunta ao servidor quem está logado.
   useEffect(() => {
@@ -90,7 +92,7 @@ const MainApp: React.FC = () => {
   const refreshSettings = useCallback(() => fetchSettings().then(applySettings), [applySettings]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || user.needsTerms) return; // sem aceite o servidor recusa tudo
     refreshSettings().catch(() => {
       setGames((g) => g ?? []); // sem resposta: o servidor continua barrando jogo desativado
       setSettingsFailed(true);
@@ -119,7 +121,7 @@ const MainApp: React.FC = () => {
   }
 
   // Quem ainda não aceitou a versão atual dos Termos/Privacidade precisa aceitar antes de continuar.
-  if (user.needsTerms) return <TermsGate onAccepted={setUser} onLogout={logout} />;
+  if (user.needsTerms) return <TermsGate user={user} onAccepted={setUser} onLogout={logout} />;
 
   const home = () => setPage('dashboard');
   const isAdmin = user.role === 'admin';

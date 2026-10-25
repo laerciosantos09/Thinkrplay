@@ -147,6 +147,10 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, login, onPremium, onUs
           </p>
           <p className="text-sm text-slate-500 truncate">{user.email}</p>
           {since && <p className="text-xs text-slate-400">Membro desde {since}{user.signupMethod && <> · criada com {METHOD_NAMES[user.signupMethod]}</>}</p>}
+          <p className="text-xs text-green-700 font-bold mt-1">
+            {user.termsAccepted && <span className="mr-3">✓ Termos de Uso aceitos</span>}
+            {user.privacyAccepted && <span>✓ Política de Privacidade aceita</span>}
+          </p>
           {user.loginMethods && user.loginMethods.length > 0 && (
             <div className="mt-2"><LoginBadges methods={user.loginMethods} origin={user.signupMethod} /></div>
           )}

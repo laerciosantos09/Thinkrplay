@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { SignJWT, jwtVerify } from 'jose';
 import { HttpError, assertDb, sql } from './db.js';
+import { legalFlags } from './user.js';
 
 export interface Session {
   id: string;
@@ -49,7 +50,9 @@ const readCookie = (req: VercelRequest, name: string) =>
 const EXPIRED = 'Sessão expirada. Entre novamente.';
 
 // Confere o token E o usuário no banco: conta excluída, senha trocada ou perfil rebaixado valem na hora.
-export const requireSession = async (req: VercelRequest): Promise<Session> => {
+// Quem ainda não aceitou os Termos de Uso E a Política de Privacidade (versões vigentes) não usa nada do app:
+// só as rotas do Perfil (que registram o aceite, deixam sair ou excluir a conta) passam { allowPending: true }.
+export const requireSession = async (req: VercelRequest, { allowPending = false } = {}): Promise<Session> => {
   const token = readCookie(req, COOKIE);
   if (!token) throw new HttpError(401, EXPIRED);
   let id: string;
@@ -61,16 +64,25 @@ export const requireSession = async (req: VercelRequest): Promise<Session> => {
   } catch {
     throw new HttpError(401, EXPIRED);
   }
-  const rows = await sql`SELECT username, role, token_version FROM users WHERE id = ${id}`;
+  // to_jsonb: tolera a coluna privacy_version ainda não existir (migração 010 pendente)
+  const rows = await sql`
+    SELECT u.username, u.role, u.token_version, u.terms_version,
+           CASE WHEN to_jsonb(u) ? 'privacy_version' THEN to_jsonb(u)->>'privacy_version' END AS privacy_version,
+           (to_jsonb(u) ? 'privacy_version') AS has_privacy
+    FROM users u WHERE u.id = ${id}`;
   const user = rows[0];
   if (!user || user.token_version !== version) throw new HttpError(401, EXPIRED);
+  const { privacy_version, has_privacy, ...rest } = user;
+  if (!allowPending && !legalFlags(has_privacy ? { ...rest, privacy_version } : rest).accepted) {
+    throw new HttpError(403, 'Aceite os Termos de Uso e a Política de Privacidade para continuar.', false, { code: 'terms_required' });
+  }
   return { id, username: user.username, role: user.role, version: user.token_version };
 };
 
 // Sessão opcional (rotas públicas que personalizam a resposta quando há alguém logado).
 export const optionalSession = async (req: VercelRequest): Promise<Session | null> => {
   try {
-    return await requireSession(req);
+    return await requireSession(req, { allowPending: true });
   } catch (err) {
     if (err instanceof HttpError && err.status === 401) return null;
     throw err;

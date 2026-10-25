@@ -127,7 +127,7 @@ assert.equal(me.hasPassword, false);
 assert.deepEqual(me.connections, ['google']);
 assert.equal(me.signupMethod, 'google');
 assert.deepEqual(me.loginMethods, ['google']);
-assert.equal(me.needsTerms, true, 'aceita os termos depois de entrar');
+assert.deepEqual([me.termsAccepted, me.privacyAccepted, me.needsTerms], [false, false, true], 'conta social precisa aceitar os dois documentos');
 
 // entrar de novo com a mesma identidade não duplica
 await api('profile', { method: 'POST', body: { action: 'logout' } }); jar.delete('session');
@@ -175,7 +175,7 @@ jar.delete('session');
 f = await begin('google');
 assert.equal(loc(await finish('google', f.state, { claims: { sub: 'g-2', email: 'novo@gmail.com', email_verified: false } })), '/?auth_error=unverified_email');
 // e-mail já tem conta com SENHA e nunca foi verificado: não entra nem conecta sem confirmar a senha
-await pg.query(`INSERT INTO users (username, email, password_hash, secret_hash) VALUES ('dudu', 'dudu@gmail.com', $1, 'h')`, [await bcrypt.hash('senha-do-dudu-1', 4)]);
+await pg.query(`INSERT INTO users (username, email, password_hash, secret_hash, terms_version, privacy_version) VALUES ('dudu', 'dudu@gmail.com', $1, 'h', '2026-10-25.1', '2026-10-25.1')`, [await bcrypt.hash('senha-do-dudu-1', 4)]);
 f = await begin('google');
 assert.equal(loc(await finish('google', f.state, { claims: { sub: 'g-3', email: 'dudu@gmail.com', email_verified: true } })), '/?auth_link=google');
 assert.ok(!jar.has('session'), 'não entrou na conta alheia');
@@ -219,6 +219,7 @@ assert.ok(stored && !stored.includes('apple-refresh-1'), 'refresh token cifrado'
 // conectar Apple a quem já usa Google (modo link) e conflitos
 jar.delete('session'); jar.delete('oauth_state');
 f = await begin('google'); await finish('google', f.state, { claims: { sub: 'g-1', email: 'ana@gmail.com', email_verified: true } });
+await okJson('profile', { body: { action: 'accept_terms', terms: true, privacy: true } });
 assert.equal((await begin('apple', { link: '1' })).u.origin, 'https://appleid.apple.com');
 f = await begin('apple', { link: '1' });
 assert.equal(loc(await finish('apple', f.state, { post: true, claims: { sub: 'a-1', email: 'bia@icloud.com', email_verified: true } })), '/?auth_error=identity_in_use', 'Apple já é de outra conta');
@@ -255,7 +256,7 @@ assert.equal((await pg.query(`SELECT count(*)::int n FROM users WHERE email='bia
 assert.equal((await pg.query(`SELECT count(*)::int n FROM oauth_identities WHERE provider='apple' AND provider_user_id='a-1'`)).rows[0].n, 0, 'identidade apagada em cascata');
 
 // ---- configurações
-await pg.query(`INSERT INTO users (username, email, password_hash, secret_hash, role) VALUES ('adm','adm@x.com','h','h','admin')`);
+await pg.query(`INSERT INTO users (username, email, password_hash, secret_hash, role, terms_version, privacy_version) VALUES ('adm','adm@x.com','h','h','admin','2026-10-25.1','2026-10-25.1')`);
 jar.clear();
 const admId = (await pg.query(`SELECT id FROM users WHERE username='adm'`)).rows[0].id;
 const { SignJWT: S } = await import('jose');
@@ -276,6 +277,7 @@ process.env.GOOGLE_CLIENT_ID = savedId;
 let ul = await okJson('profile', { method: 'GET', query: { users: '1' } });
 const dudu = ul.users.find((u) => u.username === 'dudu');
 assert.deepEqual([dudu.signupMethod, dudu.emailVerified, dudu.loginMethods], ['password', true, ['password', 'apple', 'google']]);
+assert.deepEqual([dudu.termsAccepted, dudu.privacyAccepted, ul.users.find((u) => u.username === 'AnaMaria').termsAccepted], [true, true, true]);
 assert.equal(ul.users.find((u) => u.username === 'AnaMaria').signupMethod, 'google');
 assert.deepEqual((await okJson('profile', { method: 'GET', query: { users: '1', q: 'dud' } })).users.map((u) => u.username), ['dudu']);
 assert.equal((await okJson('profile', { method: 'GET', query: { users: '1', q: '%' } })).total, 0, 'curinga é literal');

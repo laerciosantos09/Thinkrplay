@@ -6,7 +6,7 @@ import { publicUser } from './_lib/user.js';
 import { ACTIVE_STATUSES, getSubscription } from './_lib/premium.js';
 import { stripe, stripeConfigured } from './_lib/stripe.js';
 import { identitiesTableExists, revokeApple, isProvider } from './_lib/oauth.js';
-import { LEGAL_VERSION, RESERVED_USERNAMES, USERNAME_PATTERN } from '../lib/legal.js';
+import { PRIVACY_VERSION, TERMS_VERSION, RESERVED_USERNAMES, USERNAME_PATTERN } from '../lib/legal.js';
 
 const loadUser = async (id: string) => {
   const rows = await sql`
@@ -31,7 +31,7 @@ const listUsers = async (q: string, page: number) => {
         SELECT u.id, u.username, u.email, u.role, u.created_at,
                coalesce(to_jsonb(u)->>'signup_method', 'password') AS signup_method,
                coalesce((to_jsonb(u)->>'email_verified')::boolean, false) AS email_verified,
-               (u.password_hash IS NOT NULL) AS has_password,
+               (u.password_hash IS NOT NULL) AS has_password, u.terms_version, to_jsonb(u)->>'privacy_version' AS privacy_version, (to_jsonb(u) ? 'privacy_version') AS has_privacy,
                coalesce((SELECT array_agg(i.provider ORDER BY i.provider) FROM oauth_identities i WHERE i.user_id = u.id), '{}') AS providers,
                count(*) OVER() AS total
         FROM users u
@@ -39,7 +39,7 @@ const listUsers = async (q: string, page: number) => {
         ORDER BY u.created_at DESC LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`
     : await sql`
         SELECT u.id, u.username, u.email, u.role, u.created_at, 'password' AS signup_method, false AS email_verified,
-               (u.password_hash IS NOT NULL) AS has_password, '{}'::text[] AS providers, count(*) OVER() AS total
+               (u.password_hash IS NOT NULL) AS has_password, '{}'::text[] AS providers, u.terms_version, NULL::text AS privacy_version, false AS has_privacy, count(*) OVER() AS total
         FROM users u
         WHERE ${q === ''} OR u.username ILIKE ${like} OR u.email ILIKE ${like}
         ORDER BY u.created_at DESC LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`;
@@ -48,6 +48,8 @@ const listUsers = async (q: string, page: number) => {
     users: rows.map((r) => ({
       id: r.id, username: r.username, email: r.email, role: r.role, createdAt: new Date(r.created_at).toISOString(),
       signupMethod: r.signup_method, emailVerified: r.email_verified,
+      termsAccepted: r.terms_version === TERMS_VERSION,
+      privacyAccepted: r.has_privacy ? r.privacy_version === PRIVACY_VERSION : r.terms_version === TERMS_VERSION,
       loginMethods: [...(r.has_password ? ['password'] : []), ...(r.providers as string[])],
     })),
   };
@@ -71,7 +73,7 @@ export default route(['GET', 'POST'], async (req, res) => {
     endSession(res);
     return { ok: true };
   }
-  const session = await requireSession(req);
+  const session = await requireSession(req, { allowPending: true }); // o Perfil precisa funcionar para registrar o aceite
   const user = await loadUser(session.id);
   // "Flags" de login: quais formas de entrar a conta tem ativas (senha e/ou provedores conectados).
   const me = async () => {
@@ -85,7 +87,7 @@ export default route(['GET', 'POST'], async (req, res) => {
     if (user.role !== 'admin') throw new HttpError(403, 'Acesso restrito ao administrador.');
     return await listUsers(String(req.query.q ?? '').trim().slice(0, 60), Math.max(1, Number(req.query.page) || 1));
   }
-  if (req.method === 'GET') return { user: await me(), legalVersion: LEGAL_VERSION };
+  if (req.method === 'GET') return { user: await me(), legalVersion: { terms: TERMS_VERSION, privacy: PRIVACY_VERSION } };
 
   const body = req.body ?? {};
   const ip = clientIp(req);
@@ -101,7 +103,7 @@ export default route(['GET', 'POST'], async (req, res) => {
       try {
         const rows = await sql`
           UPDATE users SET username = ${username} WHERE id = ${user.id}
-          RETURNING id, username, email, role, created_at, terms_version`;
+          RETURNING *`;
         return { user: { ...(await me()), ...publicUser(rows[0]) } };
       } catch (err: any) {
         if (err?.code === '23505') throw new HttpError(409, 'Este nome de usuário já está em uso.');
@@ -172,10 +174,17 @@ export default route(['GET', 'POST'], async (req, res) => {
     }
 
     case 'accept_terms': {
-      const rows = await sql`
-        UPDATE users SET terms_version = ${LEGAL_VERSION}, terms_accepted_at = now() WHERE id = ${user.id}
-        RETURNING id, username, email, role, created_at, terms_version`;
-      return { user: { ...(await me()), ...publicUser(rows[0]) } };
+      // Um flag por documento, só com true explícito. Já aceito na versão vigente não muda (nem a data do aceite).
+      const wantTerms = body.terms === true, wantPrivacy = body.privacy === true;
+      if (!wantTerms && !wantPrivacy) throw new HttpError(400, 'Marque os documentos que você aceita.');
+      if (wantTerms) {
+        await sql`UPDATE users SET terms_version = ${TERMS_VERSION}, terms_accepted_at = now() WHERE id = ${user.id} AND terms_version IS DISTINCT FROM ${TERMS_VERSION}`;
+      }
+      if (wantPrivacy && 'privacy_version' in user) {
+        await sql`UPDATE users SET privacy_version = ${PRIVACY_VERSION}, privacy_accepted_at = now() WHERE id = ${user.id} AND privacy_version IS DISTINCT FROM ${PRIVACY_VERSION}`;
+      }
+      const fresh = await loadUser(user.id);
+      return { user: { ...publicUser(fresh), hasPassword: Boolean(fresh.password_hash), connections: await connections(user.id), loginMethods: [...(fresh.password_hash ? ['password'] : []), ...(await connections(user.id))] } };
     }
 
     default:

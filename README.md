@@ -96,6 +96,10 @@ Assinatura **mensal** que **remove os anúncios** e mostra o **selo ⭐** no per
 
 > O endpoint do webhook desliga o leitor automático de corpo (`bodyParser: false`) para conferir a assinatura sobre o corpo bruto. Confirme com o teste do passo 6 depois do primeiro deploy.
 
+## Aceite dos Termos e da Privacidade
+
+Cada documento é um **flag** do usuário (`terms_version` e `privacy_version`, com a data do aceite). Sem **os dois** aceitos na versão vigente, o usuário não usa o site nem o app: o servidor responde `403 terms_required` em todas as rotas (jogar, ranking, progresso, configurações, pagamento) e o app mostra a tela "Quase lá!". Só o Perfil funciona (registrar o aceite, sair, excluir a conta). Quem já aceitou não vê a tela de novo; ao mudar o texto de **um** documento, altere `TERMS_VERSION` ou `PRIVACY_VERSION` em `lib/legal.ts` e só aquele documento é pedido outra vez. Cadastro por senha exige marcar os dois; contas criadas pelo Google/Apple e admins criados por script aceitam no primeiro acesso. O admin vê os dois flags em **Cadastros**.
+
 ## Login com Google e Apple
 
 Botões extras na tela de login (e **Contas conectadas** no Perfil). Ficam **desligados por padrão**; o administrador liga cada um em **Configurações → Login com Google e Apple**. O botão só aparece se estiver ligado **e** as variáveis abaixo existirem **e** a migração `008` tiver rodado.
@@ -180,6 +184,7 @@ O SQL fica em **migrações numeradas** (`db/migrations/`). Cada uma roda sozinh
 | `db/migrations/007_play_energy.sql` | Limite de partidas em sequência (`play_energy`) |
 | `db/migrations/008_oauth_login.sql` | Login com Google/Apple: `oauth_identities` e senha opcional |
 | `db/migrations/009_signup_method.sql` | Origem do cadastro (`signup_method`) e `email_verified` |
+| `db/migrations/010_privacy_acceptance.sql` | Aceite separado da Política de Privacidade (`privacy_version`) |
 | `db/schema.sql` | Tudo junto, para banco novo. **Gerado** das migrações (`npm run db:schema`) |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
 | `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas |

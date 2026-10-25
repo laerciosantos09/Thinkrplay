@@ -52,6 +52,10 @@ const AdminUsers: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               Criado com <strong>{METHOD_NAMES[u.signupMethod]}</strong> · e-mail {u.emailVerified ? 'verificado' : 'não verificado'}
             </p>
             <LoginBadges methods={u.loginMethods} origin={u.signupMethod} />
+            <p className="text-xs font-bold mt-2 flex flex-wrap gap-x-4">
+              <span className={u.termsAccepted ? 'text-green-700' : 'text-red-600'}>{u.termsAccepted ? '✓' : '✗'} Termos de Uso</span>
+              <span className={u.privacyAccepted ? 'text-green-700' : 'text-red-600'}>{u.privacyAccepted ? '✓' : '✗'} Política de Privacidade</span>
+            </p>
           </li>
         ))}
         {data && data.users.length === 0 && <li className="text-center text-slate-400 py-8">Nenhum usuário encontrado.</li>}

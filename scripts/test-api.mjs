@@ -77,13 +77,13 @@ const solveMemory = async (tier, challenge) => {
 
 // --- auth
 assert.equal(await code('profile', { method: 'GET' }), 401);
-const reg = await call('auth/register', { body: { username: 'ana', email: 'Ana@x.com', password: 'senha-forte-1', secretWord: 'escola', acceptTerms: true } });
+const reg = await call('auth/register', { body: { username: 'ana', email: 'Ana@x.com', password: 'senha-forte-1', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } });
 assert.equal(reg.statusCode, 200);
 assert.match(reg.headers['Set-Cookie'], /HttpOnly; SameSite=Strict/);
 assert.equal(reg.headers['Set-Cookie'].includes('Secure'), true);
-assert.equal(await code('auth/register', { body: { username: 'ANA', email: 'b@x.com', password: 'senha-forte-1', secretWord: 'escola', acceptTerms: true } }), 409);
+assert.equal(await code('auth/register', { body: { username: 'ANA', email: 'b@x.com', password: 'senha-forte-1', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } }), 409);
 assert.equal((await ok('profile', { method: 'GET' })).user.username, 'ana');
-assert.equal(await code('auth/register', { body: { username: 'bob', email: 'bob@x.com', password: 'curta', secretWord: 'escola', acceptTerms: true } }), 400);
+assert.equal(await code('auth/register', { body: { username: 'bob', email: 'bob@x.com', password: 'curta', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } }), 400);
 assert.equal(await code('profile', { method: 'GET', headers: { cookie: 'session=forjado' } }), 401);
 assert.equal(await code('auth/login', { body: { email: 'a@x.com', password: 'x' }, headers: { origin: 'https://evil.com' } }), 403);
 assert.equal(await code('auth/login', { body: { email: 'a@x.com', password: 'x' }, headers: { 'content-type': 'text/plain' } }), 415);
@@ -227,7 +227,7 @@ assert.equal((await progressOf()).mastermind.easy, 1, 'perder não avança');
 
 // --- partida de outro usuário / ranking / progresso por tier
 const anaCookie = cookie; cookie = '';
-await ok('auth/register', { body: { username: 'bia', email: 'bia@x.com', password: 'senha-forte-2', secretWord: 'escola', acceptTerms: true } });
+await ok('auth/register', { body: { username: 'bia', email: 'bia@x.com', password: 'senha-forte-2', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } });
 assert.equal(await code('play/guess', { body: { playId: p.playId, guess: sec2 } }), 404);
 assert.deepEqual(await progressOf(), {}, 'outro usuário começa do zero');
 assert.equal((await start('memory', 'medium', 1)).statusCode, 403, 'progresso é por usuário');
@@ -244,7 +244,7 @@ const saved = process.env.JWT_SECRET;
 process.env.JWT_SECRET = 'curto';
 const leaked = await call('profile', { method: 'GET', headers: { cookie: 'session=x' } });
 assert.equal(leaked.statusCode, 401);
-const cfgErr = await call('auth/register', { body: { username: 'zed', email: 'zed@x.com', password: 'senha-forte-3', secretWord: 'escola', acceptTerms: true } });
+const cfgErr = await call('auth/register', { body: { username: 'zed', email: 'zed@x.com', password: 'senha-forte-3', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } });
 assert.equal(cfgErr.statusCode, 500);
 assert.ok(!/JWT|SECRET|segredo/i.test(JSON.stringify(cfgErr.body)), `vazou: ${JSON.stringify(cfgErr.body)}`);
 process.env.JWT_SECRET = saved;
@@ -271,6 +271,8 @@ assert.equal((await pg.query(`SELECT count(*)::int n FROM users WHERE lower(emai
 await pg.query(`DELETE FROM auth_attempts`);
 assert.equal(await code('auth/login', { body: { email: 'admin@teste.com', password: 'Senha-Teste-1@' } }), 401);
 await ok('auth/login', { body: { email: 'admin@teste.com', password: 'Outra-Senha-2@' } });
+assert.equal(await code('settings', { method: 'GET' }), 403, 'admin criado por script também precisa aceitar os documentos');
+await ok('profile', { body: { action: 'accept_terms', terms: true, privacy: true } });
 // usuário comum nunca vira admin pelo cadastro
 assert.equal((await pg.query(`SELECT role FROM users WHERE username='ana'`)).rows[0].role, 'user');
 
@@ -308,10 +310,12 @@ cookie = adminCookie;
 assert.equal(await code('settings', { body: { game: 'memory', enabled: false } }), 403, 'ex-admin perde o acesso imediatamente');
 
 // --- Termos no cadastro e nomes reservados
-const reg2 = (over) => ({ body: { username: 'novo', email: 'novo@x.com', password: 'senha-forte-9', secretWord: 'escola', acceptTerms: true, ...over } });
+const reg2 = (over) => ({ body: { username: 'novo', email: 'novo@x.com', password: 'senha-forte-9', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true, ...over } });
 cookie = '';
 assert.equal(await code('auth/register', reg2({ acceptTerms: undefined })), 400, 'sem aceitar os termos');
 assert.equal(await code('auth/register', reg2({ acceptTerms: 'true' })), 400, 'aceite precisa ser booleano true');
+assert.equal(await code('auth/register', reg2({ acceptPrivacy: undefined })), 400, 'sem aceitar a privacidade');
+assert.equal(await code('auth/register', reg2({ acceptPrivacy: false })), 400, 'privacidade recusada');
 assert.equal(await code('auth/register', reg2({ username: 'Admin' })), 400, 'nome reservado');
 assert.equal(await code('auth/register', reg2({ username: 'x@y.com' })), 400, 'username não pode ser e-mail');
 
@@ -352,11 +356,42 @@ await ok('auth/recover', { body: { email: 'carla@x.com', secretWord: 'escola', n
 assert.equal(await code('profile', { method: 'GET' }), 401, 'recuperar senha encerra sessões');
 await ok('auth/login', { body: { email: 'carla@x.com', password: 'recuperada-4' } });
 
-// --- Aceite dos termos (usuários antigos ou nova versão)
-await pg.query(`UPDATE users SET terms_version = NULL, terms_accepted_at = NULL WHERE username = 'carla.m'`);
-assert.equal((await ok('profile', { method: 'GET' })).user.needsTerms, true);
-assert.equal((await ok('profile', { body: { action: 'accept_terms' } })).user.needsTerms, false);
-assert.ok((await pg.query(`SELECT terms_accepted_at FROM users WHERE username='carla.m'`)).rows[0].terms_accepted_at, 'registra quando aceitou');
+// --- Aceite dos termos e da privacidade: um flag por documento; sem os dois o servidor barra tudo
+const flags = async () => (await ok('profile', { method: 'GET' })).user;
+let u0 = await flags();
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted, u0.needsTerms], [true, true, false], 'cadastro já aceita os dois');
+await pg.query(`UPDATE users SET terms_version = NULL, terms_accepted_at = NULL, privacy_version = NULL, privacy_accepted_at = NULL WHERE username = 'carla.m'`);
+u0 = await flags();
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted, u0.needsTerms], [false, false, true]);
+for (const [name, opts] of [['progress', { method: 'GET' }], ['settings', { method: 'GET' }], ['billing', { body: { action: 'checkout' } }], ['play/start', { body: { game: 'sudoku', tier: 'easy', challenge: 1 } }]]) {
+  const r = await call(name, opts);
+  assert.equal(r.statusCode, 403, `${name} bloqueado sem aceite`);
+  assert.equal(r.body.code, 'terms_required');
+}
+assert.equal(await code('profile', { body: { action: 'accept_terms' } }), 400, 'precisa marcar algo');
+assert.equal(await code('profile', { body: { action: 'accept_terms', terms: 'true' } }), 400, 'só true explícito');
+// só os Termos: continua bloqueado (falta a Política)
+u0 = (await ok('profile', { body: { action: 'accept_terms', terms: true } })).user;
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted, u0.needsTerms], [true, false, true], 'um flag não libera');
+assert.equal(await code('progress', { method: 'GET' }), 403, 'ainda bloqueado');
+const t1 = (await pg.query(`SELECT terms_accepted_at FROM users WHERE username='carla.m'`)).rows[0].terms_accepted_at;
+u0 = (await ok('profile', { body: { action: 'accept_terms', terms: true, privacy: true } })).user;
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted, u0.needsTerms], [true, true, false], 'com os dois libera');
+assert.equal(String((await pg.query(`SELECT terms_accepted_at FROM users WHERE username='carla.m'`)).rows[0].terms_accepted_at), String(t1), 'aceite já dado não é regravado');
+assert.equal(await code('progress', { method: 'GET' }), 200, 'liberado');
+// nova versão de UM documento pede só aquele
+await pg.query(`UPDATE users SET privacy_version = 'antiga' WHERE username = 'carla.m'`);
+u0 = await flags();
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted], [true, false]);
+assert.equal(await code('progress', { method: 'GET' }), 403);
+await ok('profile', { body: { action: 'accept_terms', privacy: true } });
+assert.equal(await code('progress', { method: 'GET' }), 200);
+assert.ok((await pg.query(`SELECT privacy_accepted_at FROM users WHERE username='carla.m'`)).rows[0].privacy_accepted_at, 'registra quando aceitou');
+// quem não aceitou ainda pode sair e excluir a conta
+await pg.query(`UPDATE users SET terms_version = NULL WHERE username = 'carla.m'`);
+assert.equal(await code('profile', { body: { action: 'logout' } }), 200);
+await ok('auth/login', { body: { email: 'carla@x.com', password: 'recuperada-4' } });
+await ok('profile', { body: { action: 'accept_terms', terms: true, privacy: true } });
 
 // --- Rankings: geral (all) e por jogo, posição do próprio usuário e atualização a cada desafio
 const fakeHash = '$2b$11$' + 'x'.repeat(53);
@@ -713,6 +748,15 @@ assert.deepEqual([setup.ads.enabled, setup.energy.enabled], [false, false]);
 cookie = gilCookie; assert.equal((await startSudoku()).statusCode, 200, 'jogar continua funcionando sem a tabela de configurações');
 await pg.query('ALTER TABLE app_settings_off RENAME TO app_settings');
 cookie = adminC; assert.deepEqual((await ok('settings', { method: 'GET' })).setup.missingMigrations, [], 'restaurado');
+
+// 010 pendente: sem a coluna de privacidade o aceite único continua valendo (ninguém fica trancado para fora)
+await pg.query('ALTER TABLE users RENAME COLUMN privacy_version TO privacy_off');
+cookie = adminC;
+setup = await ok('settings', { method: 'GET' });
+assert.deepEqual(setup.setup.missingMigrations, ['010_privacy_acceptance.sql']);
+assert.equal(await code('progress', { method: 'GET' }), 200, 'aceito nos termos = liberado sem a 010');
+assert.equal((await ok('profile', { method: 'GET' })).user.privacyAccepted, true);
+await pg.query('ALTER TABLE users RENAME COLUMN privacy_off TO privacy_version');
 
 console.log('API OK');
 process.exit(0);
