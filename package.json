@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/check-logic.ts && tsx scripts/check-migrations.mjs && tsx scripts/test-api.mjs",
+    "test": "tsx scripts/check-logic.ts && tsx scripts/check-migrations.mjs && tsx scripts/test-api.mjs && tsx scripts/test-oauth.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "db:admin": "node scripts/create-admin.mjs",
     "db:admin:sql": "node scripts/create-admin.mjs --sql",

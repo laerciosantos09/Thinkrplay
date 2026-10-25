@@ -2,6 +2,7 @@ import { HttpError, sql } from './_lib/db.js';
 import { APP_SETTINGS, isAppSettingEnabled, listGames } from './_lib/games.js';
 import { GAME_SLUGS, requireAdmin, requireSession, route } from './_lib/http.js';
 import { premiumState } from './_lib/premium.js';
+import { PROVIDERS, providerConfigured, settingKey } from './_lib/oauth.js';
 import { energyState } from './_lib/energy.js';
 import { ENERGY } from '../lib/energy.js';
 
@@ -11,6 +12,7 @@ const MIGRATIONS: Record<string, string> = {
   app_settings: '005_app_settings.sql',
   subscriptions: '006_premium.sql',
   play_energy: '007_play_energy.sql',
+  oauth_identities: '008_oauth_login.sql',
 };
 
 // GET: qualquer usuário logado vê os jogos habilitados, se os anúncios estão ligados e a situação do Premium.
@@ -42,12 +44,20 @@ export default route(['GET', 'POST'], async (req) => {
   const premium = await premiumState(session);
   const present = (await sql`
     SELECT to_regclass('public.game_settings') IS NOT NULL AS game_settings, to_regclass('public.app_settings') IS NOT NULL AS app_settings,
-           to_regclass('public.subscriptions') IS NOT NULL AS subscriptions, to_regclass('public.play_energy') IS NOT NULL AS play_energy`)[0];
+           to_regclass('public.subscriptions') IS NOT NULL AS subscriptions, to_regclass('public.play_energy') IS NOT NULL AS play_energy,
+           to_regclass('public.oauth_identities') IS NOT NULL AS oauth_identities`)[0];
   const missing = Object.keys(MIGRATIONS).filter((table) => !present[table]).map((table) => MIGRATIONS[table]);
   // Não oferece um plano que não dá para contratar: sem a tabela de assinaturas (006 pendente) o Premium fica indisponível.
   if (!present.subscriptions) premium.available = false;
   const energyEnabled = Boolean(present.play_energy) && (await isAppSettingEnabled('energy'));
+  const login: Record<string, any> = {};
+  for (const p of PROVIDERS) {
+    const enabled = await isAppSettingEnabled(settingKey(p));
+    const available = Boolean(present.oauth_identities) && enabled && providerConfigured(p);
+    login[p] = session.role === 'admin' ? { enabled, configured: providerConfigured(p), available } : { available };
+  }
   return {
+    login,
     ...(session.role === 'admin' ? { setup: { missingMigrations: missing } } : {}),
     games: await listGames(),
     ads: { enabled: await isAppSettingEnabled('ads') },

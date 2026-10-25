@@ -40,7 +40,7 @@ const h = Object.fromEntries(await Promise.all(names.map(async (n) => [n, await 
 // jar de cookies + chamada de handler
 let cookie = '';
 const call = async (name, { method = 'POST', body, query = {}, headers = {} } = {}) => {
-  const res = { headers: {}, statusCode: 200, setHeader(k, v) { this.headers[k] = v; }, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
+  const res = { headers: {}, statusCode: 200, setHeader(k, v) { this.headers[k] = v; }, getHeader(k) { return this.headers[k]; }, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } };
   await h[name]({ method, body, query, headers: { host: 'app.test', 'content-type': 'application/json', cookie, 'x-forwarded-for': '1.2.3.4', ...headers }, socket: {} }, res);
   if (res.headers['Set-Cookie']) cookie = res.headers['Set-Cookie'].split(';')[0].replace(/=$/, '=');
   return res;

@@ -19,6 +19,7 @@ import ConsentBanner from './components/ads/ConsentBanner';
 import { EnergyProvider } from './components/energy/EnergyContext';
 import Navbar from './components/Navbar';
 import { GameSetting, User } from './types';
+import { AUTH_ERRORS, AUTH_NOTICES } from './lib/authMessages';
 import { AppSettings, EnergySettings, EnergyState, PremiumState, fetchProfile, fetchSettings, logout as apiLogout, setUnauthorizedHandler } from './services/api';
 
 const GAME_PAGES: Record<string, React.FC<{ onBack: () => void }>> = {
@@ -40,6 +41,15 @@ const MainApp: React.FC = () => {
   const [energy, setEnergyConfig] = useState<EnergySettings | null>(null);
   const [missingMigrations, setMissingMigrations] = useState<string[]>([]);
   const [settingsFailed, setSettingsFailed] = useState(false);
+  const [login, setLogin] = useState<AppSettings['login'] | null>(null);
+  // Retorno do login social (?auth_error / ?auth_notice): guarda a mensagem e limpa a barra de endereço.
+  const [flash] = useState(() => {
+    const q = new URLSearchParams(window.location.search);
+    const error = q.get('auth_error'), notice = q.get('auth_notice');
+    if (error || notice) window.history.replaceState(null, '', '/');
+    return { error: error ? AUTH_ERRORS[error] ?? AUTH_ERRORS.failed : null, notice: notice ? AUTH_NOTICES[notice] ?? null : null };
+  });
+  const [flashOpen, setFlashOpen] = useState(true);
   // Voltou do pagamento do Stripe (?premium=success): abre a tela do Premium aguardando a confirmação.
   const [justPaid, setJustPaid] = useState(() => new URLSearchParams(window.location.search).get('premium') === 'success');
 
@@ -58,16 +68,17 @@ const MainApp: React.FC = () => {
   // A sessão é um cookie HttpOnly; pergunta ao servidor quem está logado.
   useEffect(() => {
     fetchProfile()
-      .then((r) => setUser(r.user))
+      .then((r) => { setUser(r.user); if (flash.error || flash.notice) setPage('profile'); }) // voltou de conectar uma conta
       .catch(() => {})
       .finally(() => setChecking(false));
-  }, []);
+  }, [flash]);
 
   // Jogos habilitados: recarrega ao entrar e a cada troca de tela (o admin pode ter mudado algo).
   const applySettings = useCallback((r: AppSettings) => {
     setGames(r.games);
     setAdsEnabled(r.ads.enabled);
     setPremium(r.premium);
+    setLogin(r.login ?? null);
     setEnergyConfig(r.energy);
     setMissingMigrations(r.setup?.missingMigrations ?? []);
     setSettingsFailed(false);
@@ -103,7 +114,7 @@ const MainApp: React.FC = () => {
   }
 
   if (!user) {
-    return <Login onLogin={(u) => { setUser(u); setPage('dashboard'); }} />;
+    return <Login onLogin={(u) => { setUser(u); setPage('dashboard'); }} initialError={flash.error} />;
   }
 
   // Quem ainda não aceitou a versão atual dos Termos/Privacidade precisa aceitar antes de continuar.
@@ -123,13 +134,19 @@ const MainApp: React.FC = () => {
         onPremium={premium && (premium.available || premium.active) ? () => setPage('premium') : undefined}
         premiumActive={premium?.active} />
       <main className="container mx-auto px-4 py-6 sm:py-8">
+        {flashOpen && (flash.error || flash.notice) && (
+          <div role={flash.error ? 'alert' : 'status'} className={`mb-6 rounded-2xl px-4 py-3 text-sm font-bold flex items-start gap-3 ${flash.error ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+            <span className="flex-1">{flash.error ?? flash.notice}</span>
+            <button onClick={() => setFlashOpen(false)} aria-label="Fechar aviso" className="shrink-0">✕</button>
+          </div>
+        )}
         {isAdmin && (settingsFailed || missingMigrations.length > 0) && (
           <div role="alert" className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p className="font-extrabold">⚠️ Atenção, administrador</p>
             <p>
               {settingsFailed
                 ? 'Não foi possível carregar as configurações do app. Confira se as migrações do banco foram aplicadas e veja os logs da Vercel.'
-                : <>Faltam migrações no banco: <strong>{missingMigrations.join(', ')}</strong>. Os recursos que dependem delas (anúncios, Premium, limite de partidas) ficam desligados até você rodá-las no Neon, em ordem, e recarregar.</>}
+                : <>Faltam migrações no banco: <strong>{missingMigrations.join(', ')}</strong>. Os recursos que dependem delas (anúncios, Premium, limite de partidas, login com Google/Apple) ficam desligados até você rodá-las no Neon, em ordem, e recarregar.</>}
             </p>
           </div>
         )}
@@ -138,11 +155,11 @@ const MainApp: React.FC = () => {
         ) : page === 'ranking' ? (
           <GlobalRanking onBack={home} isEnabled={isEnabled} />
         ) : page === 'profile' ? (
-          <Profile user={user} premium={premium} onPremium={() => setPage('premium')} onUserChange={setUser} onDeleted={clear} onBack={home} />
+          <Profile user={user} premium={premium} login={login} onPremium={() => setPage('premium')} onUserChange={setUser} onDeleted={clear} onBack={home} />
         ) : page === 'premium' && premium ? (
           <Premium premium={premium} energy={energy} justPaid={justPaid} onRefresh={refreshSettings} onBack={() => { setJustPaid(false); home(); }} />
         ) : page === 'settings' && isAdmin ? (
-          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} premium={premium} energy={energy} onChange={applySettings} onBack={home} />
+          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} premium={premium} energy={energy} login={login} onChange={applySettings} onBack={home} />
         ) : (
           <Dashboard onSelectGame={setPage} onGoToRanking={() => setPage('ranking')} isEnabled={isEnabled} loading={games === null} />
         )}

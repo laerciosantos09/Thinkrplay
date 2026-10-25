@@ -1,4 +1,4 @@
-import { GameSetting, RankingPeriod, Score, User } from '../types';
+import { GameSetting, LoginProvider, RankingPeriod, Score, User } from '../types';
 import { Tier, TierProgress } from '../lib/tiers';
 
 let onUnauthorized: () => void = () => {};
@@ -40,10 +40,15 @@ export const register = (body: { username: string; email: string; password: stri
   request<{ user: User }>('auth/register', { body });
 export const updateUsername = (username: string) =>
   request<{ user: User }>('profile', { body: { action: 'username', username } });
-export const changePassword = (currentPassword: string, newPassword: string) =>
+// currentPassword/password ficam de fora para contas criadas pelo Google/Apple que ainda não têm senha.
+export const changePassword = (currentPassword: string | undefined, newPassword: string) =>
   request<{ ok: true }>('profile', { body: { action: 'password', currentPassword, newPassword } });
-export const deleteAccount = (password: string, confirm: string) =>
+export const deleteAccount = (password: string | undefined, confirm: string) =>
   request<{ ok: true }>('profile', { body: { action: 'delete', password, confirm } });
+export const unlinkProvider = (provider: LoginProvider) =>
+  request<{ ok: true; connections: LoginProvider[] }>('profile', { body: { action: 'unlink', provider } });
+// Quais botões de login social mostrar (público: serve para a tela de login).
+export const fetchProviders = () => request<Record<LoginProvider, boolean>>('oauth/providers');
 export const acceptTerms = () => request<{ user: User }>('profile', { body: { action: 'accept_terms' } });
 export const logout = () => request<{ ok: true }>('profile', { body: { action: 'logout' } });
 export const recoverPassword = (body: { email: string; secretWord: string; newPassword: string }) =>
@@ -74,17 +79,26 @@ export interface EnergySettings {
   premium: EnergyPlan;
   state: EnergyState | null; // deste usuário (só quando o limite está ligado)
 }
+export interface LoginProviderState {
+  available: boolean; // o botão aparece (ligado + variáveis + migração)
+  // só para administradores:
+  enabled?: boolean;
+  configured?: boolean;
+}
 export interface AppSettings {
   games: GameSetting[];
   ads: { enabled: boolean };
   premium: PremiumState;
   energy: EnergySettings;
+  login: Record<LoginProvider, LoginProviderState>;
   setup?: { missingMigrations: string[] }; // só para administradores: migrações do banco que faltam
 }
 export const fetchSettings = () => request<AppSettings>('settings');
 export const setGameEnabled = (game: string, enabled: boolean) => request<AppSettings>('settings', { body: { game, enabled } });
 export const setAdsEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'ads', enabled } });
 export const setEnergyEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'energy', enabled } });
+export const setLoginEnabled = (provider: LoginProvider, enabled: boolean) =>
+  request<AppSettings>('settings', { body: { setting: `login_${provider}`, enabled } });
 export const setPremiumEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'premium', enabled } });
 
 // Premium: abre o pagamento / o portal de assinatura do Stripe (devolvem a URL para redirecionar).
