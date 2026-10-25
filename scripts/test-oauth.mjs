@@ -5,6 +5,7 @@ import { readFileSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import bcrypt from 'bcryptjs';
 import { SignJWT, exportJWK, exportPKCS8, generateKeyPair } from 'jose';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -124,6 +125,8 @@ assert.equal(me.email, 'ana@gmail.com');
 assert.equal(me.username, 'AnaMaria');
 assert.equal(me.hasPassword, false);
 assert.deepEqual(me.connections, ['google']);
+assert.equal(me.signupMethod, 'google');
+assert.deepEqual(me.loginMethods, ['google']);
 assert.equal(me.needsTerms, true, 'aceita os termos depois de entrar');
 
 // entrar de novo com a mesma identidade não duplica
@@ -171,9 +174,35 @@ assert.equal(loc(await finish('apple', f.state, { claims: { sub: 'a-9', email: '
 jar.delete('session');
 f = await begin('google');
 assert.equal(loc(await finish('google', f.state, { claims: { sub: 'g-2', email: 'novo@gmail.com', email_verified: false } })), '/?auth_error=unverified_email');
+// e-mail já tem conta com SENHA e nunca foi verificado: não entra nem conecta sem confirmar a senha
+await pg.query(`INSERT INTO users (username, email, password_hash, secret_hash) VALUES ('dudu', 'dudu@gmail.com', $1, 'h')`, [await bcrypt.hash('senha-do-dudu-1', 4)]);
 f = await begin('google');
-assert.equal(loc(await finish('google', f.state, { claims: { sub: 'g-3', email: 'ana@gmail.com', email_verified: true } })), '/?auth_error=email_in_use');
+assert.equal(loc(await finish('google', f.state, { claims: { sub: 'g-3', email: 'dudu@gmail.com', email_verified: true } })), '/?auth_link=google');
 assert.ok(!jar.has('session'), 'não entrou na conta alheia');
+assert.ok(jar.get('oauth_pending'), 'vínculo aguardando a senha');
+assert.equal((await api('login', { body: { email: 'dudu@gmail.com', password: 'senha-errada-99', linkPending: true } })).statusCode, 401);
+assert.equal((await pg.query(`SELECT count(*)::int n FROM oauth_identities WHERE provider_user_id = 'g-3'`)).rows[0].n, 0, 'senha errada não conecta');
+let lg = await okJson('login', { body: { email: 'dudu@gmail.com', password: 'senha-do-dudu-1', linkPending: true } });
+assert.equal(lg.linked, 'google');
+assert.ok(!jar.has('oauth_pending'), 'pendência consumida');
+me = (await okJson('profile', { method: 'GET' })).user;
+assert.equal(me.signupMethod, 'password', 'origem do cadastro não muda');
+assert.deepEqual(me.loginMethods, ['password', 'google'], 'flags dos métodos ativos');
+assert.equal((await pg.query(`SELECT email_verified FROM users WHERE username = 'dudu'`)).rows[0].email_verified, true);
+// agora o Google entra direto nessa MESMA conta, e o Apple com o mesmo e-mail verificado também se junta a ela
+jar.clear();
+f = await begin('google');
+assert.equal(loc(await finish('google', f.state, { claims: { sub: 'g-3', email: 'dudu@gmail.com', email_verified: true } })), '/');
+assert.equal((await okJson('profile', { method: 'GET' })).user.username, 'dudu');
+jar.clear();
+f = await begin('apple');
+assert.equal(loc(await finish('apple', f.state, { post: true, claims: { sub: 'a-dudu', email: 'dudu@gmail.com', email_verified: true } })), '/');
+me = (await okJson('profile', { method: 'GET' })).user;
+assert.equal(me.username, 'dudu');
+assert.deepEqual(me.loginMethods, ['password', 'apple', 'google'], 'três formas de entrar na mesma conta');
+assert.equal((await pg.query(`SELECT count(*)::int n FROM users WHERE email = 'dudu@gmail.com'`)).rows[0].n, 1, 'usuário unificado');
+await okJson('login', { body: { email: 'dudu@gmail.com', password: 'senha-do-dudu-1' } }); // a senha continua valendo
+jar.clear();
 
 // ---- Apple: POST form_post, nome só na primeira vez, token de atualização cifrado
 f = await begin('apple');
@@ -183,6 +212,7 @@ assert.equal(loc(r), '/');
 assert.match(tokenCalls.at(-1).client_secret, /^eyJ/, 'client secret da Apple é um JWT');
 me = (await okJson('profile', { method: 'GET' })).user;
 assert.equal(me.username, 'BiaSouza');
+assert.equal(me.signupMethod, 'apple');
 const stored = (await pg.query(`SELECT refresh_token FROM oauth_identities WHERE provider='apple'`)).rows[0].refresh_token;
 assert.ok(stored && !stored.includes('apple-refresh-1'), 'refresh token cifrado');
 
@@ -241,6 +271,27 @@ await okJson('settings', { body: { setting: 'login_google', enabled: true } });
 st = await okJson('settings', { method: 'GET' });
 assert.deepEqual(st.login.google, { enabled: true, configured: false, available: false }, 'ligado mas sem variáveis');
 process.env.GOOGLE_CLIENT_ID = savedId;
+
+// cadastro de usuários (admin): origem e flags de login
+let ul = await okJson('profile', { method: 'GET', query: { users: '1' } });
+const dudu = ul.users.find((u) => u.username === 'dudu');
+assert.deepEqual([dudu.signupMethod, dudu.emailVerified, dudu.loginMethods], ['password', true, ['password', 'apple', 'google']]);
+assert.equal(ul.users.find((u) => u.username === 'AnaMaria').signupMethod, 'google');
+assert.deepEqual((await okJson('profile', { method: 'GET', query: { users: '1', q: 'dud' } })).users.map((u) => u.username), ['dudu']);
+assert.equal((await okJson('profile', { method: 'GET', query: { users: '1', q: '%' } })).total, 0, 'curinga é literal');
+const adminCookie = jar.get('session'); jar.clear();
+f = await begin('google'); await finish('google', f.state, { claims: { sub: 'g-3', email: 'dudu@gmail.com', email_verified: true } });
+assert.equal((await api('profile', { method: 'GET', query: { users: '1' } })).statusCode, 403, 'usuário comum não lista cadastros');
+jar.clear(); jar.set('session', adminCookie);
+
+// migração 009 pendente: login social fica fora do ar, o resto segue
+await pg.query('ALTER TABLE users RENAME COLUMN signup_method TO signup_off');
+st = await okJson('settings', { method: 'GET' });
+assert.ok(st.setup.missingMigrations.includes('009_signup_method.sql'));
+assert.equal(st.login.apple.available, false);
+assert.deepEqual(await okJson('oauth', { query: { provider: 'providers' } }), { google: false, apple: false });
+assert.equal((await okJson('profile', { method: 'GET', query: { users: '1' } })).users.length > 0, true, 'lista de usuários tolera a 009 pendente');
+await pg.query('ALTER TABLE users RENAME COLUMN signup_off TO signup_method');
 
 // migração 008 pendente: tudo segue de pé
 await pg.query('ALTER TABLE oauth_identities RENAME TO oauth_off');

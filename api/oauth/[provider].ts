@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../_lib/db.js';
 import { requireSession, startSession } from '../_lib/http.js';
 import {
-  PROVIDERS, authorizeUrl, clearStateCookie, createOAuthUser, encryptToken, exchangeCode, identitiesTableExists, isProvider,
+  PROVIDERS, authorizeUrl, clearStateCookie, pendingCookie, createOAuthUser, encryptToken, exchangeCode, identitiesTableExists, isProvider,
   providerAvailable, randomToken, readStateCookie, safeEqual, stateCookie, verifyIdToken, type FlowState, type Identity, type Provider,
 } from '../_lib/oauth.js';
 
@@ -103,6 +103,8 @@ const callback = async (req: VercelRequest, res: VercelResponse, p: Provider) =>
     if (already.length > 0) return fail(res, 'already_linked');
     await sql`INSERT INTO oauth_identities (provider, provider_user_id, user_id, email) VALUES (${p}, ${identity.providerUserId}, ${session.id}, ${identity.email})`;
     await saveToken(p, identity.providerUserId, refresh);
+    // O provedor confirmou o mesmo e-mail da conta: ela passa a contar como verificada.
+    if (identity.emailVerified && identity.email) await sql`UPDATE users SET email_verified = true WHERE id = ${session.id} AND lower(email) = ${identity.email}`;
     return go(res, `/?auth_notice=linked_${p}`);
   }
 
@@ -112,10 +114,23 @@ const callback = async (req: VercelRequest, res: VercelResponse, p: Provider) =>
     await startSession(req, res, { id: existing.user_id, version: existing.token_version });
     return go(res, '/');
   }
-  // Conta nova: o e-mail precisa estar verificado pelo provedor. E-mail já cadastrado NÃO é vinculado automaticamente
-  // (o app não confirma e-mail no cadastro, então vincular sozinho permitiria tomar a conta de outra pessoa).
+  // Sem identidade conhecida: precisa de e-mail verificado pelo provedor.
   if (!identity.email || !identity.emailVerified) return fail(res, 'unverified_email');
-  const created = await createOAuthUser(identity);
+  const owner = (await sql`SELECT id, token_version, email_verified, password_hash FROM users WHERE lower(email) = ${identity.email}`)[0];
+  if (owner) {
+    // Mesma pessoa, mesma conta: se o e-mail dessa conta já foi verificado por um provedor (ou ela nem tem senha), conecta e entra.
+    if (owner.email_verified || !owner.password_hash) {
+      await sql`INSERT INTO oauth_identities (provider, provider_user_id, user_id, email) VALUES (${p}, ${identity.providerUserId}, ${owner.id}, ${identity.email}) ON CONFLICT DO NOTHING`;
+      await saveToken(p, identity.providerUserId, refresh);
+      await startSession(req, res, { id: owner.id, version: owner.token_version });
+      return go(res, '/');
+    }
+    // Conta criada com senha e e-mail nunca verificado: o cadastro por senha não prova que o e-mail é de quem o digitou,
+    // então só conecta depois de a pessoa confirmar a senha da conta (evita tomada de conta por cadastro antecipado).
+    addCookie(res, await pendingCookie(req, { provider: p, sub: identity.providerUserId, email: identity.email, refresh: refresh ? encryptToken(refresh) : undefined }));
+    return go(res, `/?auth_link=${p}`);
+  }
+  const created = await createOAuthUser(identity, p);
   if (!created) return fail(res, 'email_in_use');
   await sql`INSERT INTO oauth_identities (provider, provider_user_id, user_id, email) VALUES (${p}, ${identity.providerUserId}, ${created.id}, ${identity.email}) ON CONFLICT DO NOTHING`;
   await saveToken(p, identity.providerUserId, refresh);

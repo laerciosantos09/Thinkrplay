@@ -10,8 +10,7 @@ import { LEGAL_VERSION, RESERVED_USERNAMES, USERNAME_PATTERN } from '../lib/lega
 
 const loadUser = async (id: string) => {
   const rows = await sql`
-    SELECT id, username, email, role, created_at, terms_version, token_version, password_hash
-    FROM users WHERE id = ${id}`;
+    SELECT * FROM users WHERE id = ${id}`;
   if (!rows[0]) throw new HttpError(401, 'Sessão expirada. Entre novamente.');
   return rows[0];
 };
@@ -21,6 +20,38 @@ const connections = async (id: string): Promise<string[]> =>
   (await identitiesTableExists())
     ? (await sql`SELECT provider FROM oauth_identities WHERE user_id = ${id} ORDER BY provider`).map((r) => r.provider as string)
     : [];
+
+const PAGE_SIZE = 25;
+const listUsers = async (q: string, page: number) => {
+  const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const hasIdentities = await identitiesTableExists();
+  // to_jsonb(u): tolera a coluna signup_method ainda não existir (migração 009 pendente)
+  const rows = hasIdentities
+    ? await sql`
+        SELECT u.id, u.username, u.email, u.role, u.created_at,
+               coalesce(to_jsonb(u)->>'signup_method', 'password') AS signup_method,
+               coalesce((to_jsonb(u)->>'email_verified')::boolean, false) AS email_verified,
+               (u.password_hash IS NOT NULL) AS has_password,
+               coalesce((SELECT array_agg(i.provider ORDER BY i.provider) FROM oauth_identities i WHERE i.user_id = u.id), '{}') AS providers,
+               count(*) OVER() AS total
+        FROM users u
+        WHERE ${q === ''} OR u.username ILIKE ${like} OR u.email ILIKE ${like}
+        ORDER BY u.created_at DESC LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`
+    : await sql`
+        SELECT u.id, u.username, u.email, u.role, u.created_at, 'password' AS signup_method, false AS email_verified,
+               (u.password_hash IS NOT NULL) AS has_password, '{}'::text[] AS providers, count(*) OVER() AS total
+        FROM users u
+        WHERE ${q === ''} OR u.username ILIKE ${like} OR u.email ILIKE ${like}
+        ORDER BY u.created_at DESC LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`;
+  return {
+    total: Number(rows[0]?.total ?? 0), page, pageSize: PAGE_SIZE,
+    users: rows.map((r) => ({
+      id: r.id, username: r.username, email: r.email, role: r.role, createdAt: new Date(r.created_at).toISOString(),
+      signupMethod: r.signup_method, emailVerified: r.email_verified,
+      loginMethods: [...(r.has_password ? ['password'] : []), ...(r.providers as string[])],
+    })),
+  };
+};
 
 // Ações sensíveis exigem a senha atual e contam tentativas erradas (mesmo limite do login).
 const checkPassword = async (user: Record<string, any>, password: string, ip: string, message: string) => {
@@ -42,7 +73,18 @@ export default route(['GET', 'POST'], async (req, res) => {
   }
   const session = await requireSession(req);
   const user = await loadUser(session.id);
-  const me = async () => ({ ...publicUser(user), hasPassword: Boolean(user.password_hash), connections: await connections(user.id) });
+  // "Flags" de login: quais formas de entrar a conta tem ativas (senha e/ou provedores conectados).
+  const me = async () => {
+    const conn = await connections(user.id);
+    return {
+      ...publicUser(user), hasPassword: Boolean(user.password_hash), connections: conn,
+      loginMethods: [...(user.password_hash ? ['password'] : []), ...conn],
+    };
+  };
+  if (req.method === 'GET' && req.query?.users) { // lista de cadastros, só para administrador
+    if (user.role !== 'admin') throw new HttpError(403, 'Acesso restrito ao administrador.');
+    return await listUsers(String(req.query.q ?? '').trim().slice(0, 60), Math.max(1, Number(req.query.page) || 1));
+  }
   if (req.method === 'GET') return { user: await me(), legalVersion: LEGAL_VERSION };
 
   const body = req.body ?? {};

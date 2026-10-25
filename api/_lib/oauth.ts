@@ -1,7 +1,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { VercelRequest } from '@vercel/node';
 import { SignJWT, createLocalJWKSet, importPKCS8, jwtVerify, type JWTVerifyGetKey } from 'jose';
-import { HttpError, orIfMissing, sql } from './db.js';
+import { HttpError, sql } from './db.js';
 import { isAppSettingEnabled, type AppSetting } from './games.js';
 import { RESERVED_USERNAMES } from '../../lib/legal.js';
 
@@ -19,8 +19,11 @@ export const providerConfigured = (p: Provider) =>
 
 export const settingKey = (p: Provider): AppSetting => (p === 'google' ? 'login_google' : 'login_apple');
 
+// Migrações 008 (tabela) e 009 (origem do cadastro) aplicadas.
 export const identitiesTableExists = async () =>
-  Boolean((await orIfMissing(() => sql`SELECT to_regclass('public.oauth_identities') IS NOT NULL AS ok`, [{ ok: false }]))[0]?.ok);
+  Boolean((await sql`
+    SELECT to_regclass('public.oauth_identities') IS NOT NULL
+       AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'signup_method') AS ok`)[0]?.ok);
 
 // O botão só aparece (e o fluxo só roda) se: ligado pelo admin + variáveis definidas + tabela criada (migração 008).
 export const providerAvailable = async (p: Provider) =>
@@ -51,10 +54,8 @@ const secret = () => {
 export const randomToken = () => randomBytes(24).toString('base64url');
 
 // SameSite=None: o retorno da Apple é um POST vindo de outro site, e um cookie Lax não seria enviado.
-const cookieAttrs = (req: VercelRequest) => {
-  const local = /^(localhost|127\.0\.0\.1)(:|$)/.test(String(req.headers.host ?? ''));
-  return `HttpOnly; Path=/api/oauth; ${local ? 'SameSite=Lax' : 'SameSite=None; Secure'}`;
-};
+const isLocalHost = (req: VercelRequest) => /^(localhost|127\.0\.0\.1)(:|$)/.test(String(req.headers.host ?? ''));
+const cookieAttrs = (req: VercelRequest) => `HttpOnly; Path=/api/oauth; ${isLocalHost(req) ? 'SameSite=Lax' : 'SameSite=None; Secure'}`;
 export const stateCookie = async (req: VercelRequest, flow: FlowState) =>
   `${COOKIE}=${await new SignJWT({ ...flow }).setProtectedHeader({ alg: 'HS256' }).setExpirationTime('10m').sign(secret())}; Max-Age=600; ${cookieAttrs(req)}`;
 export const clearStateCookie = (req: VercelRequest) => `${COOKIE}=; Max-Age=0; ${cookieAttrs(req)}`;
@@ -65,6 +66,21 @@ export const readStateCookie = async (req: VercelRequest): Promise<FlowState | n
   try {
     const { payload } = await jwtVerify(raw, secret(), { algorithms: ['HS256'] });
     return payload as unknown as FlowState;
+  } catch {
+    return null;
+  }
+};
+// ---- vínculo pendente: o e-mail do login social já tem conta com senha; confirmar a senha antes de conectar ------
+export interface PendingLink { provider: Provider; sub: string; email: string; refresh?: string } // refresh já cifrado
+const PENDING = 'oauth_pending';
+export const pendingCookie = async (req: VercelRequest, link: PendingLink) =>
+  `${PENDING}=${await new SignJWT({ ...link }).setProtectedHeader({ alg: 'HS256' }).setExpirationTime('10m').sign(secret())}; Max-Age=600; HttpOnly; Path=/api; SameSite=Lax${isLocalHost(req) ? '' : '; Secure'}`;
+export const clearPendingCookie = (req: VercelRequest) => `${PENDING}=; Max-Age=0; HttpOnly; Path=/api; SameSite=Lax${isLocalHost(req) ? '' : '; Secure'}`;
+export const readPendingCookie = async (req: VercelRequest): Promise<PendingLink | null> => {
+  const raw = String(req.headers.cookie ?? '').split(';').map((c) => c.trim().split('=')).find(([k]) => k === PENDING)?.[1];
+  if (!raw) return null;
+  try {
+    return (await jwtVerify(raw, secret(), { algorithms: ['HS256'] })).payload as unknown as PendingLink;
   } catch {
     return null;
   }
@@ -204,13 +220,13 @@ const baseUsername = (identity: Identity) => {
 };
 
 // Cria a conta (sem senha) com um nome de usuário livre. null = o e-mail já pertence a outra conta.
-export const createOAuthUser = async (identity: Identity) => {
+export const createOAuthUser = async (identity: Identity, provider: Provider) => {
   const base = baseUsername(identity);
   for (let attempt = 0; attempt < 8; attempt++) {
     const username = attempt === 0 ? base : `${base.slice(0, 14)}${Math.floor(100 + Math.random() * 9900)}`;
     const rows = await sql`
-      INSERT INTO users (username, email, password_hash, secret_hash)
-      VALUES (${username}, ${identity.email}, NULL, NULL)
+      INSERT INTO users (username, email, password_hash, secret_hash, signup_method, email_verified)
+      VALUES (${username}, ${identity.email}, NULL, NULL, ${provider}, true)
       ON CONFLICT DO NOTHING
       RETURNING id, token_version`;
     if (rows.length > 0) return rows[0] as { id: string; token_version: number };

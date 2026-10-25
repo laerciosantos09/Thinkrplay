@@ -16,7 +16,7 @@ const Field: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: str
   </div>
 );
 
-const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | null }> = ({ onLogin, initialError }) => {
+const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | null; pendingLink?: LoginProvider | null }> = ({ onLogin, initialError, pendingLink }) => {
   const [mode, setMode] = useState<Mode>('login');
   const [form, setForm] = useState({ username: '', email: '', password: '', secretWord: '', newPassword: '' });
   const [acceptTerms, setAcceptTerms] = useState(false);
@@ -54,7 +54,7 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
       } else if (mode === 'register') {
         onLogin((await register({ ...form, acceptTerms })).user);
       } else {
-        onLogin((await login(form.email, form.password)).user);
+        onLogin((await login(form.email, form.password, Boolean(pendingLink))).user);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Algo deu errado.');
@@ -85,6 +85,11 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 sm:p-10 animate-fadeIn">
         <h2 className="text-3xl font-black text-ink-800 mb-2">{titles[mode][0]}</h2>
         <p className="text-slate-500 mb-6">{titles[mode][1]}</p>
+        {pendingLink && mode === 'login' && (
+          <p role="status" className="text-sm font-bold text-brand-700 bg-brand-50 rounded-xl px-4 py-3 mb-4">
+            Já existe uma conta Thinkrplay com o e-mail da sua conta {pendingLink === 'google' ? 'Google' : 'Apple'}. Digite o e-mail e a senha dela para conectar: depois você poderá entrar pelos dois jeitos.
+          </p>
+        )}
 
         <form onSubmit={submit} className="space-y-4">
           {mode === 'register' && (

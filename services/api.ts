@@ -1,4 +1,4 @@
-import { GameSetting, LoginProvider, RankingPeriod, Score, User } from '../types';
+import { GameSetting, LoginMethod, LoginProvider, RankingPeriod, Score, User } from '../types';
 import { Tier, TierProgress } from '../lib/tiers';
 
 let onUnauthorized: () => void = () => {};
@@ -35,7 +35,15 @@ const request = async <T,>(path: string, init: { method?: string; body?: unknown
 
 // A sessão é um cookie: perguntar pelo perfil também diz se há alguém logado.
 export const fetchProfile = () => request<{ user: User }>('profile');
-export const login = (email: string, password: string) => request<{ user: User }>('auth/login', { body: { email, password } });
+// linkPending: depois de um login social que esperava a senha, conecta o provedor a esta conta.
+export const login = (email: string, password: string, linkPending = false) =>
+  request<{ user: User; linked: LoginProvider | null }>('auth/login', { body: { email, password, ...(linkPending ? { linkPending } : {}) } });
+export interface AdminUser {
+  id: string; username: string; email: string; role: string; createdAt: string;
+  signupMethod: LoginMethod; emailVerified: boolean; loginMethods: LoginMethod[];
+}
+export const fetchUsers = (q: string, page: number) =>
+  request<{ users: AdminUser[]; total: number; page: number; pageSize: number }>(`profile?users=1&q=${encodeURIComponent(q)}&page=${page}`);
 export const register = (body: { username: string; email: string; password: string; secretWord: string; acceptTerms: boolean }) =>
   request<{ user: User }>('auth/register', { body });
 export const updateUsername = (username: string) =>

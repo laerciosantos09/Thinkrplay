@@ -9,6 +9,7 @@ import LightsGame from './pages/LightsGame';
 import MastermindGame from './pages/MastermindGame';
 import GlobalRanking from './pages/GlobalRanking';
 import AdminSettings from './pages/AdminSettings';
+import AdminUsers from './pages/AdminUsers';
 import Profile from './pages/Profile';
 import Premium from './pages/Premium';
 import LegalPage, { LEGAL_ROUTES } from './pages/Legal';
@@ -18,7 +19,7 @@ import { AdsProvider } from './components/ads/AdsContext';
 import ConsentBanner from './components/ads/ConsentBanner';
 import { EnergyProvider } from './components/energy/EnergyContext';
 import Navbar from './components/Navbar';
-import { GameSetting, User } from './types';
+import { GameSetting, LoginProvider, User } from './types';
 import { AUTH_ERRORS, AUTH_NOTICES } from './lib/authMessages';
 import { AppSettings, EnergySettings, EnergyState, PremiumState, fetchProfile, fetchSettings, logout as apiLogout, setUnauthorizedHandler } from './services/api';
 
@@ -45,9 +46,9 @@ const MainApp: React.FC = () => {
   // Retorno do login social (?auth_error / ?auth_notice): guarda a mensagem e limpa a barra de endereço.
   const [flash] = useState(() => {
     const q = new URLSearchParams(window.location.search);
-    const error = q.get('auth_error'), notice = q.get('auth_notice');
-    if (error || notice) window.history.replaceState(null, '', '/');
-    return { error: error ? AUTH_ERRORS[error] ?? AUTH_ERRORS.failed : null, notice: notice ? AUTH_NOTICES[notice] ?? null : null };
+    const error = q.get('auth_error'), notice = q.get('auth_notice'), pending = q.get('auth_link');
+    if (error || notice || pending) window.history.replaceState(null, '', '/');
+    return { pending: pending === 'google' || pending === 'apple' ? (pending as LoginProvider) : null, error: error ? AUTH_ERRORS[error] ?? AUTH_ERRORS.failed : null, notice: notice ? AUTH_NOTICES[notice] ?? null : null };
   });
   const [flashOpen, setFlashOpen] = useState(true);
   // Voltou do pagamento do Stripe (?premium=success): abre a tela do Premium aguardando a confirmação.
@@ -68,7 +69,7 @@ const MainApp: React.FC = () => {
   // A sessão é um cookie HttpOnly; pergunta ao servidor quem está logado.
   useEffect(() => {
     fetchProfile()
-      .then((r) => { setUser(r.user); if (flash.error || flash.notice) setPage('profile'); }) // voltou de conectar uma conta
+      .then((r) => { setUser(r.user); if (flash.error || flash.notice || flash.pending) setPage(flash.pending ? 'dashboard' : 'profile'); }) // voltou de conectar uma conta
       .catch(() => {})
       .finally(() => setChecking(false));
   }, [flash]);
@@ -114,7 +115,7 @@ const MainApp: React.FC = () => {
   }
 
   if (!user) {
-    return <Login onLogin={(u) => { setUser(u); setPage('dashboard'); }} initialError={flash.error} />;
+    return <Login onLogin={(u) => { setUser(u); setPage('dashboard'); }} initialError={flash.error} pendingLink={flash.pending} />;
   }
 
   // Quem ainda não aceitou a versão atual dos Termos/Privacidade precisa aceitar antes de continuar.
@@ -158,8 +159,10 @@ const MainApp: React.FC = () => {
           <Profile user={user} premium={premium} login={login} onPremium={() => setPage('premium')} onUserChange={setUser} onDeleted={clear} onBack={home} />
         ) : page === 'premium' && premium ? (
           <Premium premium={premium} energy={energy} justPaid={justPaid} onRefresh={refreshSettings} onBack={() => { setJustPaid(false); home(); }} />
+        ) : page === 'users' && isAdmin ? (
+          <AdminUsers onBack={() => setPage('settings')} />
         ) : page === 'settings' && isAdmin ? (
-          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} premium={premium} energy={energy} login={login} onChange={applySettings} onBack={home} />
+          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} premium={premium} energy={energy} login={login} onChange={applySettings} onUsers={() => setPage('users')} onBack={home} />
         ) : (
           <Dashboard onSelectGame={setPage} onGoToRanking={() => setPage('ranking')} isEnabled={isEnabled} loading={games === null} />
         )}

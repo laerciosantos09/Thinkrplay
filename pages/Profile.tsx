@@ -3,6 +3,7 @@ import { LoginProvider, User } from '../types';
 import { AppSettings, PremiumState } from '../services/api';
 import { changePassword, deleteAccount, unlinkProvider, updateUsername } from '../services/api';
 import { PROVIDER_NAMES, ProviderIcon } from '../components/SocialButtons';
+import LoginBadges, { METHOD_NAMES } from '../components/LoginBadges';
 import { USERNAME_PATTERN } from '../lib/legal';
 import { SUPPORT_EMAIL } from '../config';
 import { useAds } from '../components/ads/AdsContext';
@@ -58,7 +59,7 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, login, onPremium, onUs
     setConnMsg({});
     try {
       const r = await unlinkProvider(provider);
-      onUserChange({ ...user, connections: r.connections });
+      onUserChange({ ...user, connections: r.connections, loginMethods: [...(user.hasPassword !== false ? ['password' as const] : []), ...r.connections] });
       setConnMsg({ ok: `Conta ${PROVIDER_NAMES[provider]} desconectada.` });
     } catch (err) {
       setConnMsg({ error: errorText(err) });
@@ -101,7 +102,7 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, login, onPremium, onUs
     try {
       await changePassword(hasPassword ? pw.current : undefined, pw.next);
       setPw({ current: '', next: '', again: '' });
-      onUserChange({ ...user, hasPassword: true });
+      onUserChange({ ...user, hasPassword: true, loginMethods: ['password', ...connections] });
       setPwMsg({ ok: hasPassword ? 'Senha alterada. Os outros dispositivos foram desconectados.' : 'Senha definida. Agora você também pode entrar com e-mail e senha.' });
     } catch (err) {
       setPwMsg({ error: errorText(err) });
@@ -145,7 +146,10 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, login, onPremium, onUs
             {user.role === 'admin' && <span className="ml-2 align-middle text-[10px] font-black uppercase bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">admin</span>}
           </p>
           <p className="text-sm text-slate-500 truncate">{user.email}</p>
-          {since && <p className="text-xs text-slate-400">Membro desde {since}</p>}
+          {since && <p className="text-xs text-slate-400">Membro desde {since}{user.signupMethod && <> · criada com {METHOD_NAMES[user.signupMethod]}</>}</p>}
+          {user.loginMethods && user.loginMethods.length > 0 && (
+            <div className="mt-2"><LoginBadges methods={user.loginMethods} origin={user.signupMethod} /></div>
+          )}
         </div>
       </section>
 

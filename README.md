@@ -120,7 +120,8 @@ Botões extras na tela de login (e **Contas conectadas** no Perfil). Ficam **des
 **Como funciona (segurança):**
 - Fluxo "código de autorização" no servidor, com `state` e `nonce` num cookie assinado de 10 minutos; o `id_token` é verificado (assinatura pelas chaves públicas do provedor, emissor, público, validade e nonce).
 - Conta nova só é criada com e-mail **verificado** pelo provedor, e fica **sem senha** (pode definir uma no Perfil).
-- **Sem vínculo automático por e-mail:** se já existe uma conta com o mesmo e-mail, o login social é recusado; a pessoa entra com a senha e conecta o provedor em *Meu perfil → Contas conectadas*.
+- **Uma conta só, três formas de entrar (senha, Google, Apple):** o login social com um e-mail que já tem conta entra nela quando o e-mail dessa conta já foi verificado por um provedor. Se a conta foi criada **com senha** (e-mail nunca confirmado), o app pede a **senha dela** antes de conectar o provedor (cadastro antecipado com o e-mail de outra pessoa não rouba a conta). Também dá para conectar em *Meu perfil → Contas conectadas*. Apple com e-mail privado ("ocultar e-mail") tem outro endereço: conecte pelo Perfil.
+- **Origem e flags:** `users.signup_method` guarda por onde a conta foi criada; os tipos de login ativos (senha, Google, Apple) aparecem como etiquetas no Perfil e, para o admin, em **Configurações → 👥 Cadastros** (busca por nome ou e-mail).
 - Sempre sobra uma forma de entrar: não dá para desconectar o único método.
 - **Apple:** o token de atualização é guardado **cifrado** (AES-256-GCM) e é **revogado** ao excluir a conta ou desconectar a Apple (exigência da App Store). Se a revogação falhar, a exclusão é interrompida.
 - Plano Hobby da Vercel: a API usa exatamente **12 funções** (o limite). Uma nova rota precisa entrar dentro de uma função existente.
@@ -178,6 +179,7 @@ O SQL fica em **migrações numeradas** (`db/migrations/`). Cada uma roda sozinh
 | `db/migrations/006_premium.sql` | Plano Premium: `subscriptions` e `stripe_events` |
 | `db/migrations/007_play_energy.sql` | Limite de partidas em sequência (`play_energy`) |
 | `db/migrations/008_oauth_login.sql` | Login com Google/Apple: `oauth_identities` e senha opcional |
+| `db/migrations/009_signup_method.sql` | Origem do cadastro (`signup_method`) e `email_verified` |
 | `db/schema.sql` | Tudo junto, para banco novo. **Gerado** das migrações (`npm run db:schema`) |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
 | `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas |

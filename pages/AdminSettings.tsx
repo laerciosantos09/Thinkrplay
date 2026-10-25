@@ -11,6 +11,7 @@ interface AdminSettingsProps {
   energy: EnergySettings | null;
   login: AppSettings['login'] | null;
   onChange: (settings: AppSettings) => void;
+  onUsers: () => void;
   onBack: () => void;
 }
 
@@ -37,7 +38,7 @@ const LOGIN_VARS: Record<LoginProvider, string[]> = {
   apple: ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY'],
 };
 
-const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premium, energy, login, onChange, onBack }) => {
+const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premium, energy, login, onChange, onUsers, onBack }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const state = new Map(games.map((g) => [g.slug, g]));
@@ -66,6 +67,9 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premiu
           <h1 className="text-3xl font-extrabold text-ink-900">Configurações</h1>
           <p className="text-slate-500 text-sm font-medium">Área do administrador</p>
         </div>
+        <button onClick={onUsers} className="ml-auto bg-white border-2 border-slate-100 hover:border-brand-300 text-brand-700 font-black text-sm rounded-xl px-4 py-2">
+          👥 Cadastros
+        </button>
       </div>
 
       {error && <p role="alert" className="text-sm font-bold text-red-600 bg-red-50 rounded-xl px-4 py-3">{error}</p>}
@@ -262,7 +266,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premiu
                       : st.available
                         ? 'Ligado: o botão aparece na tela de login.'
                         : st.configured
-                          ? 'Ligado, mas sem efeito: falta rodar a migração 008 no banco.'
+                          ? 'Ligado, mas sem efeito: faltam as migrações 008 e 009 no banco.'
                           : 'Ligado, mas sem efeito: faltam as variáveis no servidor (veja abaixo).'}
                   </p>
                 </div>
