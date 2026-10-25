@@ -225,6 +225,32 @@ assert.deepEqual(last.code, sec2); assert.equal(last.won, false);
 assert.equal(await code('play/guess', { body: { playId: p.playId, guess: sec2 } }), 409);
 assert.equal((await progressOf()).mastermind.easy, 1, 'perder não avança');
 
+// --- corrida: requisições paralelas não podem gastar menos tentativas do que fizeram
+p = await ok('play/start', { body: { game: 'mastermind', tier: 'easy', challenge: 2 } });
+const sec3 = generateCode(mulberry32(await seedOf(p.playId)), 'easy', 2);
+const burst = await Promise.all(Array.from({ length: cfg.attempts * 4 }, () => call('play/guess', { body: { playId: p.playId, guess: sec3.map((c) => (c + 1) % cfg.colors) } })));
+assert.ok(burst.filter((r) => r.statusCode === 200).length <= cfg.attempts, 'no máximo as tentativas permitidas recebem dica');
+assert.ok(burst.filter((r) => r.statusCode === 409).length >= cfg.attempts * 3, 'o excedente é recusado sem dica');
+assert.equal((await pg.query(`SELECT (state->>'guesses')::int g FROM plays WHERE id=$1`, [p.playId])).rows[0].g, burst.filter((r) => r.statusCode === 200).length, 'cada dica dada foi contada como tentativa');
+p = await ok('play/start', { body: { game: 'sequence', tier: 'easy', challenge: 2 } });
+const sseed2 = await seedOf(p.playId);
+const puz0 = generateSequence(mulberry32(sequenceSeed(sseed2, 0)), 'easy', 2);
+const wrong = puz0.options.find((o) => o !== puz0.answer);
+await Promise.all(Array.from({ length: 6 }, () => ok('play/guess', { body: { playId: p.playId, value: wrong } })));
+assert.equal((await pg.query(`SELECT (state->>'mistakes')::int m FROM plays WHERE id=$1`, [p.playId])).rows[0].m, 6, 'erros em paralelo são todos contados');
+const okRound = await Promise.all([1, 2, 3].map(() => call('play/guess', { body: { playId: p.playId, value: puz0.answer } })));
+assert.equal(okRound.filter((r) => r.statusCode === 200).length, 1, 'a mesma rodada só avança uma vez');
+assert.equal((await pg.query(`SELECT (state->>'round')::int r FROM plays WHERE id=$1`, [p.playId])).rows[0].r, 1);
+
+// --- cadastro: limite por IP e senha acima de 72 bytes (o bcrypt cortaria o resto)
+const cadastro = (over) => call('auth/register', { headers: { 'x-forwarded-for': '7.7.7.7' }, body: { username: 'lim', email: 'lim@x.com', password: 'senha-forte-9', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true, ...over } });
+assert.equal((await cadastro({ password: 'a'.repeat(73) })).statusCode, 400, 'senha de 73 bytes');
+assert.equal((await cadastro({ password: 'é'.repeat(37) })).statusCode, 400, '74 bytes em 37 caracteres');
+for (let i = 0; i < 20; i++) await pg.query(`INSERT INTO auth_attempts (email, ip) VALUES ('register', 'register:7.7.7.7')`);
+assert.equal((await cadastro({})).statusCode, 429, 'muitos cadastros do mesmo IP');
+assert.equal((await call('auth/login', { headers: { 'x-forwarded-for': '7.7.7.7' }, body: { email: 'ana@x.com', password: 'errada-123' } })).statusCode, 401, 'cadastros não bloqueiam o login do mesmo IP');
+await pg.query(`DELETE FROM auth_attempts`);
+
 // --- partida de outro usuário / ranking / progresso por tier
 const anaCookie = cookie; cookie = '';
 await ok('auth/register', { body: { username: 'bia', email: 'bia@x.com', password: 'senha-forte-2', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } });

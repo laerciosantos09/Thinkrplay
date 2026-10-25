@@ -138,3 +138,10 @@ export const str = (value: unknown, field: string, min: number, max: number) => 
   }
   return trimmed;
 };
+
+// Senha nova: o bcrypt só considera os 72 primeiros BYTES, então senhas maiores (ou com acentos demais) seriam silenciosamente cortadas.
+export const newPassword = (value: unknown, field: string) => {
+  const password = str(value, field, 8, 100);
+  if (Buffer.byteLength(password, 'utf8') > 72) throw new HttpError(400, `${field} deve ter no máximo 72 bytes (cerca de 72 caracteres).`);
+  return password;
+};

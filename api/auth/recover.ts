@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { HttpError, sql } from '../_lib/db.js';
-import { clientIp, route, str } from '../_lib/http.js';
+import { clientIp, newPassword as validNewPassword, route, str } from '../_lib/http.js';
 import { assertNotLocked, recordFailure } from '../_lib/limit.js';
 
 const DUMMY = '$2b$11$Da2tv3js2BCDJcW3u1R72uq/.bufOtL3XYtKadhDaJkTtN7KM5GPu';
@@ -8,7 +8,7 @@ const DUMMY = '$2b$11$Da2tv3js2BCDJcW3u1R72uq/.bufOtL3XYtKadhDaJkTtN7KM5GPu';
 export default route(['POST'], async (req) => {
   const email = str(req.body?.email, 'E-mail', 3, 120).toLowerCase();
   const secretWord = str(req.body?.secretWord, 'Palavra secreta', 2, 100).toLowerCase();
-  const newPassword = str(req.body?.newPassword, 'Nova senha', 8, 100);
+  const newPassword = validNewPassword(req.body?.newPassword, 'Nova senha');
   const ip = clientIp(req);
   await assertNotLocked(email, ip);
 

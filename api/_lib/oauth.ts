@@ -116,7 +116,7 @@ const appleClientSecret = async () => {
 };
 
 const postForm = async (url: string, params: Record<string, string>) => {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString() });
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString(), signal: AbortSignal.timeout(8_000) });
   const data: any = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
 };
@@ -140,7 +140,7 @@ const jwksCache = new Map<Provider, { keys: JWTVerifyGetKey; at: number }>();
 const loadJwks = async (p: Provider, force = false) => {
   const hit = jwksCache.get(p);
   if (hit && !force && Date.now() - hit.at < 3600_000) return hit.keys;
-  const res = await fetch(JWKS_URL[p]);
+  const res = await fetch(JWKS_URL[p], { signal: AbortSignal.timeout(8_000) });
   if (!res.ok) throw new Error('jwks_failed');
   const keys = createLocalJWKSet(await res.json());
   jwksCache.set(p, { keys, at: Date.now() });

@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { HttpError, sql } from './_lib/db.js';
-import { clientIp, endSession, requireSession, route, startSession, str } from './_lib/http.js';
+import { clientIp, endSession, newPassword, requireSession, route, startSession, str } from './_lib/http.js';
 import { assertNotLocked, recordFailure } from './_lib/limit.js';
 import { publicUser } from './_lib/user.js';
 import { ACTIVE_STATUSES, getSubscription } from './_lib/premium.js';
@@ -112,7 +112,7 @@ export default route(['GET', 'POST'], async (req, res) => {
     }
 
     case 'password': {
-      const next = str(body.newPassword, 'Nova senha', 8, 100);
+      const next = newPassword(body.newPassword, 'Nova senha');
       // Conta criada pelo Google/Apple ainda não tem senha: define a primeira sem pedir a atual (a sessão já prova quem é).
       const current = user.password_hash ? str(body.currentPassword, 'Senha atual', 1, 100) : '';
       if (user.password_hash) await checkPassword(user, current, ip, 'Senha atual incorreta.');

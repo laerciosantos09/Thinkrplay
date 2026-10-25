@@ -1,13 +1,14 @@
 import bcrypt from 'bcryptjs';
 import { HttpError, sql } from '../_lib/db.js';
-import { route, startSession, str } from '../_lib/http.js';
+import { clientIp, newPassword, route, startSession, str } from '../_lib/http.js';
+import { throttle } from '../_lib/limit.js';
 import { publicUser } from '../_lib/user.js';
 import { PRIVACY_VERSION, TERMS_VERSION, RESERVED_USERNAMES, USERNAME_PATTERN } from '../../lib/legal.js';
 
 export default route(['POST'], async (req, res) => {
   const username = str(req.body?.username, 'Nome de usuário', 3, 24);
   const email = str(req.body?.email, 'E-mail', 5, 120).toLowerCase();
-  const password = str(req.body?.password, 'Senha', 8, 100);
+  const password = newPassword(req.body?.password, 'Senha');
   const secretWord = str(req.body?.secretWord, 'Palavra secreta', 4, 100).toLowerCase();
 
   if (req.body?.acceptTerms !== true) throw new HttpError(400, 'É necessário aceitar os Termos de Uso.');
@@ -17,6 +18,8 @@ export default route(['POST'], async (req, res) => {
   }
   if (RESERVED_USERNAMES.includes(username.toLowerCase())) throw new HttpError(400, 'Este nome de usuário não está disponível.');
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(400, 'E-mail inválido.');
+
+  await throttle('register', clientIp(req), 20); // cada cadastro faz 2 hashes bcrypt: sem limite viraria spam e consumo de CPU
 
   const [passwordHash, secretHash] = await Promise.all([
     bcrypt.hash(password, 11),
