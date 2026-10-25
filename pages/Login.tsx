@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { User } from '../types';
+import React, { useEffect, useState } from 'react';
+import { LoginProvider, User } from '../types';
 import { APP_TAGLINE } from '../config';
 import Logo from '../components/Logo';
-import { login, recoverPassword, register } from '../services/api';
+import SocialButtons from '../components/SocialButtons';
+import { fetchProviders, login, recoverPassword, register } from '../services/api';
 
 type Mode = 'login' | 'register' | 'recover';
 
@@ -15,13 +16,21 @@ const Field: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label: str
   </div>
 );
 
-const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
+const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | null; pendingLink?: LoginProvider | null }> = ({ onLogin, initialError, pendingLink }) => {
   const [mode, setMode] = useState<Mode>('login');
   const [form, setForm] = useState({ username: '', email: '', password: '', secretWord: '', newPassword: '' });
   const [acceptTerms, setAcceptTerms] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError ?? null);
+  const [social, setSocial] = useState<LoginProvider[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Botões do Google/Apple só aparecem se o administrador ligou e o servidor está configurado.
+  useEffect(() => {
+    fetchProviders()
+      .then((r) => setSocial((['google', 'apple'] as LoginProvider[]).filter((p) => r[p])))
+      .catch(() => {});
+  }, []);
 
   const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [key]: e.target.value });
@@ -45,7 +54,7 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
       } else if (mode === 'register') {
         onLogin((await register({ ...form, acceptTerms })).user);
       } else {
-        onLogin((await login(form.email, form.password)).user);
+        onLogin((await login(form.email, form.password, Boolean(pendingLink))).user);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Algo deu errado.');
@@ -76,6 +85,11 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
       <div className="w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 sm:p-10 animate-fadeIn">
         <h2 className="text-3xl font-black text-ink-800 mb-2">{titles[mode][0]}</h2>
         <p className="text-slate-500 mb-6">{titles[mode][1]}</p>
+        {pendingLink && mode === 'login' && (
+          <p role="status" className="text-sm font-bold text-brand-700 bg-brand-50 rounded-xl px-4 py-3 mb-4">
+            Já existe uma conta Thinkrplay com o e-mail da sua conta {pendingLink === 'google' ? 'Google' : 'Apple'}. Digite o e-mail e a senha dela para conectar: depois você poderá entrar pelos dois jeitos.
+          </p>
+        )}
 
         <form onSubmit={submit} className="space-y-4">
           {mode === 'register' && (
@@ -125,6 +139,16 @@ const Login: React.FC<{ onLogin: (user: User) => void }> = ({ onLogin }) => {
             {busy ? 'Aguarde...' : mode === 'register' ? 'Cadastrar' : mode === 'recover' ? 'Redefinir senha' : 'Entrar'}
           </button>
         </form>
+
+        {social.length > 0 && mode !== 'recover' && (
+          <div className="mt-6">
+            <div className="flex items-center gap-3 text-xs font-bold text-slate-400 uppercase mb-4">
+              <span className="flex-1 h-px bg-slate-100" />ou<span className="flex-1 h-px bg-slate-100" />
+            </div>
+            <SocialButtons providers={social} verb={mode === 'register' ? 'Cadastrar com' : 'Entrar com'} />
+            {mode === 'register' && <p className="mt-3 text-center text-xs text-slate-400">Ao continuar, você aceita os Termos de Uso e a Política de Privacidade.</p>}
+          </div>
+        )}
 
         <p className="mt-4 text-center text-xs text-slate-400">
           <a href="/termos" className="hover:underline">Termos de Uso</a> · <a href="/privacidade" className="hover:underline">Política de Privacidade</a>

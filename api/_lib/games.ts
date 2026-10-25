@@ -24,7 +24,7 @@ export const assertGameEnabled = async (game: string) => {
 };
 
 // Recursos do app que o administrador liga/desliga (tabela app_settings). Sem linha = desligado.
-export const APP_SETTINGS = ['ads', 'premium', 'energy'] as const;
+export const APP_SETTINGS = ['ads', 'premium', 'energy', 'login_google', 'login_apple'] as const;
 export type AppSetting = (typeof APP_SETTINGS)[number];
 
 export const isAppSettingEnabled = async (key: AppSetting): Promise<boolean> => {

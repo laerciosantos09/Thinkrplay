@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { ADS, AdPlacement, GAMES } from '../config';
-import { AppSettings, EnergySettings, PremiumState, setAdsEnabled, setEnergyEnabled, setGameEnabled, setPremiumEnabled } from '../services/api';
-import { GameSetting } from '../types';
+import { AppSettings, EnergySettings, PremiumState, setAdsEnabled, setLoginEnabled, setEnergyEnabled, setGameEnabled, setPremiumEnabled } from '../services/api';
+import { GameSetting, LoginProvider } from '../types';
+import { PROVIDER_NAMES, ProviderIcon } from '../components/SocialButtons';
 
 interface AdminSettingsProps {
   games: GameSetting[];
   adsEnabled: boolean;
   premium: PremiumState | null;
   energy: EnergySettings | null;
+  login: AppSettings['login'] | null;
   onChange: (settings: AppSettings) => void;
+  onUsers: () => void;
   onBack: () => void;
 }
 
@@ -30,7 +33,12 @@ const PLACEMENTS: { key: AdPlacement; label: string; variable: string }[] = [
   { key: 'result', label: 'Depois de concluir um desafio', variable: 'VITE_ADSENSE_SLOT_RESULT' },
 ];
 
-const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premium, energy, onChange, onBack }) => {
+const LOGIN_VARS: Record<LoginProvider, string[]> = {
+  google: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'],
+  apple: ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY'],
+};
+
+const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premium, energy, login, onChange, onUsers, onBack }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const state = new Map(games.map((g) => [g.slug, g]));
@@ -59,6 +67,9 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premiu
           <h1 className="text-3xl font-extrabold text-ink-900">Configurações</h1>
           <p className="text-slate-500 text-sm font-medium">Área do administrador</p>
         </div>
+        <button onClick={onUsers} className="ml-auto bg-white border-2 border-slate-100 hover:border-brand-300 text-brand-700 font-black text-sm rounded-xl px-4 py-2">
+          👥 Cadastros
+        </button>
       </div>
 
       {error && <p role="alert" className="text-sm font-bold text-red-600 bg-red-50 rounded-xl px-4 py-3">{error}</p>}
@@ -233,6 +244,58 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premiu
             Desligar o interruptor encerra só as <strong>novas</strong> assinaturas: quem já assina mantém os benefícios e continua podendo gerenciar ou cancelar.
           </p>
         </div>
+      </section>
+
+      <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        <header className="p-6 border-b border-slate-100">
+          <h2 className="text-xl font-extrabold text-ink-800">Login com Google e Apple</h2>
+          <p className="text-sm text-slate-500">Botões extras na tela de login. O login com e-mail e senha continua funcionando.</p>
+        </header>
+
+        {(['google', 'apple'] as LoginProvider[]).map((p) => {
+          const st = login?.[p];
+          return (
+            <div key={p} className="border-b border-slate-100 last:border-b-0">
+              <div className="flex items-center gap-4 p-5">
+                <ProviderIcon provider={p} className="w-7 h-7 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className={`font-extrabold ${st?.enabled ? 'text-ink-800' : 'text-slate-400'}`}>Entrar com {PROVIDER_NAMES[p]}</p>
+                  <p className="text-xs text-slate-400">
+                    {!st?.enabled
+                      ? 'Desligado: o botão não aparece.'
+                      : st.available
+                        ? 'Ligado: o botão aparece na tela de login.'
+                        : st.configured
+                          ? 'Ligado, mas sem efeito: faltam as migrações 008 e 009 no banco.'
+                          : 'Ligado, mas sem efeito: faltam as variáveis no servidor (veja abaixo).'}
+                  </p>
+                </div>
+                <Switch
+                  on={Boolean(st?.enabled)} disabled={busy !== null || !st}
+                  label={`${st?.enabled ? 'Desligar' : 'Ligar'} login com ${PROVIDER_NAMES[p]}`}
+                  onToggle={() => save(`login_${p}`, () => setLoginEnabled(p, !st?.enabled))}
+                />
+              </div>
+              <ul className="px-5 pb-5 space-y-1.5 text-xs">
+                <li className="flex items-start gap-2">
+                  <span aria-hidden="true">{st?.configured ? '✅' : '⚠️'}</span>
+                  <span className="text-slate-600">
+                    Variáveis do servidor (Vercel):{' '}
+                    {LOGIN_VARS[p].map((v, i) => <React.Fragment key={v}>{i > 0 && ', '}<code className="font-bold">{v}</code></React.Fragment>)}
+                    {' '}— {st?.configured ? 'detectadas' : 'faltando'}
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span aria-hidden="true">🔗</span>
+                  <span className="text-slate-600">
+                    URL de retorno a cadastrar no {p === 'google' ? 'Google Cloud' : 'Apple Developer (Services ID)'}:{' '}
+                    <code className="font-bold break-all">{window.location.origin}/api/oauth/{p}</code>
+                  </span>
+                </li>
+              </ul>
+            </div>
+          );
+        })}
       </section>
     </div>
   );

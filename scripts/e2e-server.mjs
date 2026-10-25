@@ -24,7 +24,7 @@ export class HttpError extends Error { constructor(status, message, expose = fal
 export const isMissingTable = (err) => err?.code === '42P01';
 export const orIfMissing = async (run, fallback) => { try { return await run(); } catch (err) { if (isMissingTable(err)) return fallback; throw err; } };`);
 
-const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'billing', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings'];
+const names = ['auth/register', 'auth/login', 'auth/recover', 'profile', 'billing', 'play/start', 'play/finish', 'play/guess', 'ranking', 'progress', 'settings', 'oauth/[provider]'];
 await build({
   entryPoints: Object.fromEntries(names.map((n) => [n, path.join(root, 'api', `${n}.ts`)])),
   outdir: out, bundle: true, format: 'esm', platform: 'node', packages: 'external',
@@ -95,6 +95,8 @@ http.createServer(async (req, res) => {
     const raw = Buffer.concat(chunks).toString();
     const vr = Object.assign(req, { query: Object.fromEntries(url.searchParams), body: raw ? JSON.parse(raw) : undefined });
     const vres = Object.assign(res, { status(c) { res.statusCode = c; return res; }, json(b) { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(b)); return res; } });
+    const oauth = url.pathname.match(/^\/api\/oauth\/([a-z]+)$/); // /api/oauth/google -> oauth/[provider]
+    if (oauth) { vr.query.provider = oauth[1]; return handlers['oauth/[provider]'](vr, vres); }
     return handlers[url.pathname.slice(5)]?.(vr, vres) ?? res.writeHead(404).end('{}');
   }
   let file = path.join(root, 'dist', url.pathname);

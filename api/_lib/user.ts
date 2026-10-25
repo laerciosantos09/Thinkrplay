@@ -7,6 +7,7 @@ export const publicUser = (row: Record<string, any>) => ({
   email: row.email as string,
   role: row.role as string,
   createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+  signupMethod: (row.signup_method as string | undefined) ?? 'password', // por onde a conta foi criada
   needsTerms: row.terms_version !== LEGAL_VERSION,
 });
 

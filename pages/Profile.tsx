@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { User } from '../types';
-import { PremiumState } from '../services/api';
-import { changePassword, deleteAccount, updateUsername } from '../services/api';
+import { LoginProvider, User } from '../types';
+import { AppSettings, PremiumState } from '../services/api';
+import { changePassword, deleteAccount, unlinkProvider, updateUsername } from '../services/api';
+import { PROVIDER_NAMES, ProviderIcon } from '../components/SocialButtons';
+import LoginBadges, { METHOD_NAMES } from '../components/LoginBadges';
 import { USERNAME_PATTERN } from '../lib/legal';
 import { SUPPORT_EMAIL } from '../config';
 import { useAds } from '../components/ads/AdsContext';
@@ -9,6 +11,7 @@ import { useAds } from '../components/ads/AdsContext';
 interface ProfileProps {
   user: User;
   premium: PremiumState | null;
+  login: AppSettings['login'] | null;
   onPremium: () => void;
   onUserChange: (user: User) => void;
   onDeleted: () => void;
@@ -36,13 +39,34 @@ const Message: React.FC<{ error?: string | null; ok?: string | null }> = ({ erro
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : 'Algo deu errado.');
 
-const Profile: React.FC<ProfileProps> = ({ user, premium, onPremium, onUserChange, onDeleted, onBack }) => {
+const Profile: React.FC<ProfileProps> = ({ user, premium, login, onPremium, onUserChange, onDeleted, onBack }) => {
   const ads = useAds();
   // nome de usuário
   const [username, setUsername] = useState(user.username);
   const [nameMsg, setNameMsg] = useState<{ error?: string; ok?: string }>({});
   const [nameBusy, setNameBusy] = useState(false);
   const nameValid = USERNAME_PATTERN.test(username);
+  const hasPassword = user.hasPassword !== false;
+  const connections = user.connections ?? [];
+
+  // contas conectadas (Google/Apple)
+  const [connMsg, setConnMsg] = useState<{ error?: string; ok?: string }>({});
+  const [connBusy, setConnBusy] = useState<LoginProvider | null>(null);
+  const shownProviders = (['google', 'apple'] as LoginProvider[]).filter((p) => connections.includes(p) || login?.[p]?.available);
+  const disconnect = async (provider: LoginProvider) => {
+    if (!window.confirm(`Desconectar sua conta ${PROVIDER_NAMES[provider]}?`)) return;
+    setConnBusy(provider);
+    setConnMsg({});
+    try {
+      const r = await unlinkProvider(provider);
+      onUserChange({ ...user, connections: r.connections, loginMethods: [...(user.hasPassword !== false ? ['password' as const] : []), ...r.connections] });
+      setConnMsg({ ok: `Conta ${PROVIDER_NAMES[provider]} desconectada.` });
+    } catch (err) {
+      setConnMsg({ error: errorText(err) });
+    } finally {
+      setConnBusy(null);
+    }
+  };
 
   // senha
   const [pw, setPw] = useState({ current: '', next: '', again: '' });
@@ -76,9 +100,10 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, onPremium, onUserChang
     setPwBusy(true);
     setPwMsg({});
     try {
-      await changePassword(pw.current, pw.next);
+      await changePassword(hasPassword ? pw.current : undefined, pw.next);
       setPw({ current: '', next: '', again: '' });
-      setPwMsg({ ok: 'Senha alterada. Os outros dispositivos foram desconectados.' });
+      onUserChange({ ...user, hasPassword: true, loginMethods: ['password', ...connections] });
+      setPwMsg({ ok: hasPassword ? 'Senha alterada. Os outros dispositivos foram desconectados.' : 'Senha definida. Agora você também pode entrar com e-mail e senha.' });
     } catch (err) {
       setPwMsg({ error: errorText(err) });
     } finally {
@@ -91,7 +116,7 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, onPremium, onUserChang
     setDelBusy(true);
     setDelError(null);
     try {
-      await deleteAccount(del.password, del.confirm);
+      await deleteAccount(hasPassword ? del.password : undefined, del.confirm);
       onDeleted();
     } catch (err) {
       setDelError(errorText(err));
@@ -121,7 +146,10 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, onPremium, onUserChang
             {user.role === 'admin' && <span className="ml-2 align-middle text-[10px] font-black uppercase bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">admin</span>}
           </p>
           <p className="text-sm text-slate-500 truncate">{user.email}</p>
-          {since && <p className="text-xs text-slate-400">Membro desde {since}</p>}
+          {since && <p className="text-xs text-slate-400">Membro desde {since}{user.signupMethod && <> · criada com {METHOD_NAMES[user.signupMethod]}</>}</p>}
+          {user.loginMethods && user.loginMethods.length > 0 && (
+            <div className="mt-2"><LoginBadges methods={user.loginMethods} origin={user.signupMethod} /></div>
+          )}
         </div>
       </section>
 
@@ -151,13 +179,41 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, onPremium, onUserChang
         </form>
       </Card>
 
-      <Card title="Alterar senha" hint="Por segurança, informe a senha atual. Ao trocar, os outros dispositivos conectados são desconectados.">
+      {shownProviders.length > 0 && (
+        <Card title="Contas conectadas" hint="Entre com um toque usando sua conta Google ou Apple. Você precisa manter ao menos uma forma de entrar (senha ou conta conectada).">
+          <ul className="space-y-3">
+            {shownProviders.map((p) => {
+              const linked = connections.includes(p);
+              return (
+                <li key={p} className="flex items-center gap-3">
+                  <ProviderIcon provider={p} className="w-6 h-6 shrink-0" />
+                  <span className="flex-1 font-bold text-ink-800">{PROVIDER_NAMES[p]} <span className={`text-xs ${linked ? 'text-green-600' : 'text-slate-400'}`}>{linked ? 'conectada' : 'não conectada'}</span></span>
+                  {linked ? (
+                    <button onClick={() => disconnect(p)} disabled={connBusy !== null}
+                      className="text-sm font-black px-4 py-2 rounded-xl border-2 border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40">
+                      {connBusy === p ? '...' : 'Desconectar'}
+                    </button>
+                  ) : (
+                    <a href={`/api/oauth/${p}?link=1`} className="text-sm font-black px-4 py-2 rounded-xl bg-brand-600 text-white hover:bg-brand-700">Conectar</a>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          <div className="mt-3"><Message error={connMsg.error} ok={connMsg.ok} /></div>
+        </Card>
+      )}
+
+      <Card title={hasPassword ? 'Alterar senha' : 'Definir senha'}
+        hint={hasPassword ? 'Por segurança, informe a senha atual. Ao trocar, os outros dispositivos conectados são desconectados.' : 'Sua conta entra pelo Google/Apple. Defina uma senha se quiser também entrar com e-mail e senha.'}>
         <form onSubmit={savePassword} className="space-y-3">
-          <div>
-            <label htmlFor="pw-current" className={label}>Senha atual</label>
-            <input id="pw-current" type="password" required className={input} autoComplete="current-password"
-              value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} />
-          </div>
+          {hasPassword && (
+            <div>
+              <label htmlFor="pw-current" className={label}>Senha atual</label>
+              <input id="pw-current" type="password" required className={input} autoComplete="current-password"
+                value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} />
+            </div>
+          )}
           <div>
             <label htmlFor="pw-new" className={label}>Nova senha</label>
             <input id="pw-new" type="password" required minLength={8} className={input} autoComplete="new-password"
@@ -171,7 +227,7 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, onPremium, onUserChang
           </div>
           <Message error={pwMsg.error} ok={pwMsg.ok} />
           <button disabled={pwBusy} className="bg-brand-600 text-white px-6 py-3 rounded-xl font-black disabled:opacity-40 hover:bg-brand-700">
-            {pwBusy ? 'Salvando...' : 'Alterar senha'}
+            {pwBusy ? 'Salvando...' : hasPassword ? 'Alterar senha' : 'Definir senha'}
           </button>
         </form>
       </Card>
@@ -203,21 +259,24 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, onPremium, onUserChang
           <li>Seu cadastro, pontuações, partidas e progresso em todos os jogos são apagados.</li>
           <li>Você sai de todos os rankings imediatamente.</li>
           <li>Seu e-mail e nome de usuário ficam livres para novos cadastros.</li>
+          {connections.includes('apple') && <li>O acesso do app à sua conta Apple é revogado.</li>}
           {premium?.active && <li><strong>Sua assinatura Premium é cancelada</strong> antes de a conta ser apagada.</li>}
         </ul>
         <form onSubmit={removeAccount} className="space-y-3">
-          <div>
-            <label htmlFor="del-pw" className={label}>Sua senha</label>
-            <input id="del-pw" type="password" required className={input} autoComplete="current-password"
-              value={del.password} onChange={(e) => setDel({ ...del, password: e.target.value })} />
-          </div>
+          {hasPassword && (
+            <div>
+              <label htmlFor="del-pw" className={label}>Sua senha</label>
+              <input id="del-pw" type="password" required className={input} autoComplete="current-password"
+                value={del.password} onChange={(e) => setDel({ ...del, password: e.target.value })} />
+            </div>
+          )}
           <div>
             <label htmlFor="del-confirm" className={label}>Digite <strong>EXCLUIR</strong> para confirmar</label>
             <input id="del-confirm" className={input} autoComplete="off" value={del.confirm}
               onChange={(e) => setDel({ ...del, confirm: e.target.value })} />
           </div>
           <Message error={delError} />
-          <button disabled={delBusy || !del.password || del.confirm.trim().toUpperCase() !== 'EXCLUIR'}
+          <button disabled={delBusy || (hasPassword && !del.password) || del.confirm.trim().toUpperCase() !== 'EXCLUIR'}
             className="bg-red-600 text-white px-6 py-3 rounded-xl font-black disabled:opacity-40 hover:bg-red-700">
             {delBusy ? 'Excluindo...' : 'Excluir minha conta definitivamente'}
           </button>

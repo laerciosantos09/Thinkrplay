@@ -1,3 +1,6 @@
+export type LoginProvider = 'google' | 'apple';
+export type LoginMethod = 'password' | LoginProvider;
+
 export interface User {
   id: string;
   username: string;
@@ -5,6 +8,10 @@ export interface User {
   role?: 'user' | 'admin';
   createdAt?: string | null;
   needsTerms?: boolean; // ainda não aceitou a versão atual dos Termos/Privacidade
+  signupMethod?: 'password' | LoginProvider; // por onde a conta foi criada
+  loginMethods?: LoginMethod[]; // flags: formas de entrar ativas
+  hasPassword?: boolean; // contas criadas pelo Google/Apple começam sem senha
+  connections?: LoginProvider[]; // provedores de login conectados
 }
 
 export interface Score {

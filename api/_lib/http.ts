@@ -32,10 +32,9 @@ export const startSession = async (
     .setSubject(user.id)
     .setExpirationTime(`${MAX_AGE}s`)
     .sign(secret());
-  res.setHeader(
-    'Set-Cookie',
-    `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${MAX_AGE}${isLocal(req) ? '' : '; Secure'}`,
-  );
+  const cookie = `${COOKIE}=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${MAX_AGE}${isLocal(req) ? '' : '; Secure'}`;
+  const current = res.getHeader('Set-Cookie'); // preserva outros cookies já definidos (ex.: limpeza do estado OAuth)
+  res.setHeader('Set-Cookie', current ? [...(Array.isArray(current) ? current : [String(current)]), cookie] : cookie);
 };
 
 export const endSession = (res: VercelResponse) =>

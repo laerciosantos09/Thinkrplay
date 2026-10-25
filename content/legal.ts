@@ -88,7 +88,7 @@ export const PRIVACY: LegalDocument = {
   sections: [
     {
       title: 'Dados Coletados',
-      text: 'Coletamos: nome de usuário, endereço de e-mail, senha e palavra secreta de recuperação (guardadas apenas como hash irreversível, nunca em texto), partidas, desafios resolvidos, pontuações e progresso e, se você assinar o Premium, a situação da assinatura (ativa, data de renovação) e o identificador de cliente no Stripe; os dados do cartão ficam somente com o Stripe. Por segurança, guardamos por cerca de 1 dia o e-mail e o endereço IP de tentativas de login que falharam.',
+      text: 'Coletamos: nome de usuário, endereço de e-mail, senha e palavra secreta de recuperação (guardadas apenas como hash irreversível, nunca em texto), partidas, desafios resolvidos, pontuações e progresso e, se você assinar o Premium, a situação da assinatura (ativa, data de renovação) e o identificador de cliente no Stripe; os dados do cartão ficam somente com o Stripe. Se você entrar com Google ou Apple, recebemos do provedor apenas um identificador da sua conta, o e-mail (verificado) e o nome, e nunca a senha dele; para contas Apple guardamos, cifrado, um token que serve só para revogar o acesso ao excluir a conta. Por segurança, guardamos por cerca de 1 dia o e-mail e o endereço IP de tentativas de login que falharam.',
     },
     {
       title: 'Como Usamos seus Dados',
@@ -96,7 +96,7 @@ export const PRIVACY: LegalDocument = {
     },
     {
       title: 'Compartilhamento de Dados',
-      text: 'Não vendemos seus dados pessoais. Seu nome de usuário, pontuação e quantidade de desafios resolvidos aparecem nos rankings; seu e-mail nunca é exibido. Compartilhamos dados apenas com provedores de serviço essenciais (hospedagem, banco de dados e, para assinantes, pagamentos pelo Stripe, que podem estar fora do Brasil) e quando exigido por lei. Se você for Premium, o selo ⭐ aparece nos rankings. Se os anúncios estiverem ativos, o Google AdSense recebe dados técnicos do seu navegador (como IP e identificadores) para exibi-los, conforme a sua escolha de personalização.',
+      text: 'Não vendemos seus dados pessoais. Seu nome de usuário, pontuação e quantidade de desafios resolvidos aparecem nos rankings; seu e-mail nunca é exibido. Compartilhamos dados apenas com provedores de serviço essenciais (hospedagem, banco de dados, login pelo Google ou Apple, se você escolher usá-lo, e, para assinantes, pagamentos pelo Stripe, que podem estar fora do Brasil) e quando exigido por lei. Se você for Premium, o selo ⭐ aparece nos rankings. Se os anúncios estiverem ativos, o Google AdSense recebe dados técnicos do seu navegador (como IP e identificadores) para exibi-los, conforme a sua escolha de personalização.',
     },
     {
       title: 'Cookies e Armazenamento Local',

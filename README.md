@@ -96,6 +96,36 @@ Assinatura **mensal** que **remove os anúncios** e mostra o **selo ⭐** no per
 
 > O endpoint do webhook desliga o leitor automático de corpo (`bodyParser: false`) para conferir a assinatura sobre o corpo bruto. Confirme com o teste do passo 6 depois do primeiro deploy.
 
+## Login com Google e Apple
+
+Botões extras na tela de login (e **Contas conectadas** no Perfil). Ficam **desligados por padrão**; o administrador liga cada um em **Configurações → Login com Google e Apple**. O botão só aparece se estiver ligado **e** as variáveis abaixo existirem **e** a migração `008` tiver rodado.
+
+| Variável (servidor, Vercel) | O que é |
+| --- | --- |
+| `GOOGLE_CLIENT_ID` | ID do cliente OAuth do Google (termina em `.apps.googleusercontent.com`) |
+| `GOOGLE_CLIENT_SECRET` | segredo do cliente OAuth. **Sensitive.** |
+| `APPLE_CLIENT_ID` | **Services ID** da Apple (ex.: `com.thinkrplay.web`), não o App ID |
+| `APPLE_TEAM_ID` | Team ID da conta Apple Developer (10 caracteres) |
+| `APPLE_KEY_ID` | ID da chave "Sign in with Apple" (10 caracteres) |
+| `APPLE_PRIVATE_KEY` | conteúdo do arquivo `.p8`, em uma linha, com as quebras de linha como `\n`. **Sensitive.** |
+| `APP_URL` | recomendada: `https://seudominio.com` (usada para montar a URL de retorno) |
+| `OAUTH_TOKEN_KEY` | opcional: chave para cifrar o token da Apple no banco; sem ela usa `JWT_SECRET` |
+
+**URLs de retorno (cadastre exatamente assim):** `https://seudominio.com/api/oauth/google` e `https://seudominio.com/api/oauth/apple`.
+
+**Google:** Google Cloud Console → *APIs e serviços → Credenciais → Criar credenciais → ID do cliente OAuth* (tipo "Aplicativo da Web"); em *Origens JavaScript autorizadas* ponha o domínio e em *URIs de redirecionamento* a URL do Google acima. Configure a *Tela de consentimento* (escopos básicos: e-mail, perfil e openid).
+
+**Apple:** Apple Developer (conta paga) → *Identifiers*: crie um **App ID** com "Sign in with Apple" e um **Services ID** (será o `APPLE_CLIENT_ID`); no Services ID configure *Domains* (`seudominio.com`) e *Return URLs* (URL da Apple acima). Em *Keys* crie uma chave com "Sign in with Apple" e baixe o `.p8` (só baixa uma vez). A Apple não aceita `localhost`: teste em um domínio real.
+
+**Como funciona (segurança):**
+- Fluxo "código de autorização" no servidor, com `state` e `nonce` num cookie assinado de 10 minutos; o `id_token` é verificado (assinatura pelas chaves públicas do provedor, emissor, público, validade e nonce).
+- Conta nova só é criada com e-mail **verificado** pelo provedor, e fica **sem senha** (pode definir uma no Perfil).
+- **Uma conta só, três formas de entrar (senha, Google, Apple):** o login social com um e-mail que já tem conta entra nela quando o e-mail dessa conta já foi verificado por um provedor. Se a conta foi criada **com senha** (e-mail nunca confirmado), o app pede a **senha dela** antes de conectar o provedor (cadastro antecipado com o e-mail de outra pessoa não rouba a conta). Também dá para conectar em *Meu perfil → Contas conectadas*. Apple com e-mail privado ("ocultar e-mail") tem outro endereço: conecte pelo Perfil.
+- **Origem e flags:** `users.signup_method` guarda por onde a conta foi criada; os tipos de login ativos (senha, Google, Apple) aparecem como etiquetas no Perfil e, para o admin, em **Configurações → 👥 Cadastros** (busca por nome ou e-mail).
+- Sempre sobra uma forma de entrar: não dá para desconectar o único método.
+- **Apple:** o token de atualização é guardado **cifrado** (AES-256-GCM) e é **revogado** ao excluir a conta ou desconectar a Apple (exigência da App Store). Se a revogação falhar, a exclusão é interrompida.
+- Plano Hobby da Vercel: a API usa exatamente **12 funções** (o limite). Uma nova rota precisa entrar dentro de uma função existente.
+
 ## Anúncios (Google AdSense)
 
 A estrutura já está pronta e **desligada por padrão**: nenhum script do Google é carregado até que (1) as variáveis abaixo existam, (2) o administrador ligue o interruptor em **Configurações → Anúncios** e (3) o usuário escolha no aviso de anúncios.
@@ -147,6 +177,9 @@ O SQL fica em **migrações numeradas** (`db/migrations/`). Cada uma roda sozinh
 | `db/migrations/004_profile_terms_rankings.sql` | Perfil (versão de sessão), aceite dos Termos e índice do ranking geral |
 | `db/migrations/005_app_settings.sql` | Configurações gerais do app (interruptor dos anúncios) |
 | `db/migrations/006_premium.sql` | Plano Premium: `subscriptions` e `stripe_events` |
+| `db/migrations/007_play_energy.sql` | Limite de partidas em sequência (`play_energy`) |
+| `db/migrations/008_oauth_login.sql` | Login com Google/Apple: `oauth_identities` e senha opcional |
+| `db/migrations/009_signup_method.sql` | Origem do cadastro (`signup_method`) e `email_verified` |
 | `db/schema.sql` | Tudo junto, para banco novo. **Gerado** das migrações (`npm run db:schema`) |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
 | `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas |
