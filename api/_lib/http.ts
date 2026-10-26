@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { SignJWT, jwtVerify } from 'jose';
 import { HttpError, assertDb, sql } from './db.js';
-import { legalFlags } from './user.js';
+import { legalFlags, needsEmailVerification } from './user.js';
 
 export interface Session {
   id: string;
@@ -64,17 +64,20 @@ export const requireSession = async (req: VercelRequest, { allowPending = false 
   } catch {
     throw new HttpError(401, EXPIRED);
   }
-  // to_jsonb: tolera a coluna privacy_version ainda não existir (migração 010 pendente)
+  // to_jsonb: tolera colunas de migrações ainda pendentes (privacy_version, verification_required, email_verified)
   const rows = await sql`
-    SELECT u.username, u.role, u.token_version, u.terms_version,
-           CASE WHEN to_jsonb(u) ? 'privacy_version' THEN to_jsonb(u)->>'privacy_version' END AS privacy_version,
-           (to_jsonb(u) ? 'privacy_version') AS has_privacy
+    SELECT u.username, u.role, u.token_version, to_jsonb(u) - 'password_hash' - 'secret_hash' AS j
     FROM users u WHERE u.id = ${id}`;
   const user = rows[0];
   if (!user || user.token_version !== version) throw new HttpError(401, EXPIRED);
-  const { privacy_version, has_privacy, ...rest } = user;
-  if (!allowPending && !legalFlags(has_privacy ? { ...rest, privacy_version } : rest).accepted) {
-    throw new HttpError(403, 'Aceite os Termos de Uso e a Política de Privacidade para continuar.', false, { code: 'terms_required' });
+  const row = typeof user.j === 'string' ? JSON.parse(user.j) : user.j;
+  if (!allowPending) {
+    if (!legalFlags(row).accepted) {
+      throw new HttpError(403, 'Aceite os Termos de Uso e a Política de Privacidade para continuar.', false, { code: 'terms_required' });
+    }
+    if (needsEmailVerification(row)) {
+      throw new HttpError(403, 'Confirme seu e-mail para continuar.', false, { code: 'email_unverified' });
+    }
   }
   return { id, username: user.username, role: user.role, version: user.token_version };
 };

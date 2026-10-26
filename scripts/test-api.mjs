@@ -443,6 +443,11 @@ assert.equal(await code('profile', { body: { action: 'logout' } }), 200);
 await ok('auth/login', { body: { email: 'carla@x.com', password: 'recuperada-4' } });
 await ok('profile', { body: { action: 'accept_terms', terms: true, privacy: true } });
 
+// --- sinal de ritmo: toda partida concluída guarda tempo / mínimo humano (alimenta o painel de suspeitos)
+const paces = (await pg.query(`SELECT pace_ratio FROM plays WHERE finished_at IS NOT NULL AND points > 0`)).rows.map((r) => r.pace_ratio);
+assert.ok(paces.length > 0 && paces.every((x) => x === null || x >= 1), 'ritmo registrado e nunca abaixo do mínimo humano');
+assert.ok(paces.some((x) => x !== null), 'há partidas com ritmo registrado');
+
 // --- Rankings: geral (all) e por jogo, posição do próprio usuário e atualização a cada desafio
 const fakeHash = '$2b$11$' + 'x'.repeat(53);
 for (let i = 1; i <= 11; i++) {
@@ -459,9 +464,10 @@ assert.ok(meRow && meRow.username === 'ana' && meRow.position > 10, 'a posição
 assert.equal(allBefore.yearly.find((r) => r.isMe).position, meRow.position);
 const anaSudoku = await ok('ranking', { method: 'GET', query: { game: 'sudoku' } });
 assert.ok(anaSudoku.daily.find((r) => r.isMe).position > 10);
-cookie = ''; // sem login: só o top, sem linha do usuário
-const anon = await ok('ranking', { method: 'GET', query: { game: 'all' } });
-assert.equal(anon.daily.length, 10); assert.ok(anon.daily.every((r) => !r.isMe));
+cookie = ''; // o ranking mostra nomes e pontuações: exige login (não é público)
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'all' } }), 401, 'ranking não é público');
+cookie = 'session=forjado'; assert.equal(await code('ranking', { method: 'GET', query: { game: 'all' } }), 401);
+cookie = anaCookie;
 assert.equal(await code('ranking', { method: 'GET', query: { game: 'xadrez' } }), 400);
 // concluir um desafio atualiza o ranking na hora (geral e do jogo), sem nenhum cache
 cookie = anaCookie;
@@ -493,6 +499,7 @@ assert.match(delRes.headers['Set-Cookie'], /Max-Age=0/, 'cookie de sessão limpo
 for (const table of ['users WHERE id', 'scores WHERE user_id', 'plays WHERE user_id', 'tier_progress WHERE user_id']) {
   assert.equal((await pg.query(`SELECT count(*)::int n FROM ${table} = $1`, [carlaId])).rows[0].n, 0, `${table} apagado`);
 }
+cookie = anaCookie;
 assert.equal((await ok('ranking', { method: 'GET', query: { game: 'all' } })).daily.some((r) => r.username === 'carla.m'), false, 'sai do ranking');
 cookie = carla; assert.equal(await code('profile', { method: 'GET' }), 401, 'sessão da conta excluída não vale');
 cookie = ''; assert.equal(await code('auth/login', { body: { email: 'carla@x.com', password: 'recuperada-4' } }), 401);
@@ -807,6 +814,12 @@ assert.deepEqual(setup.setup.missingMigrations, ['010_privacy_acceptance.sql']);
 assert.equal(await code('progress', { method: 'GET' }), 200, 'aceito nos termos = liberado sem a 010');
 assert.equal((await ok('profile', { method: 'GET' })).user.privacyAccepted, true);
 await pg.query('ALTER TABLE users RENAME COLUMN privacy_off TO privacy_version');
+
+// 012 pendente: terminar partida continua funcionando sem a coluna do ritmo
+await pg.query('ALTER TABLE plays RENAME COLUMN pace_ratio TO pace_off');
+cookie = anaCookie;
+assert.equal((await solveMemory('hard', 3).catch((e) => ({ err: e }))).err, undefined, 'partida concluída sem a coluna pace_ratio');
+await pg.query('ALTER TABLE plays RENAME COLUMN pace_off TO pace_ratio');
 
 console.log('API OK');
 process.exit(0);

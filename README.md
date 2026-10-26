@@ -98,12 +98,51 @@ Assinatura **mensal** que **remove os anúncios** e mostra o **selo ⭐** no per
 
 ## Segurança: o que o app já faz
 
+- **SQL injection:** toda consulta usa o template `sql\`...\`` (valores viram parâmetros do banco). `npm test` roda `scripts/check-sql.mjs`, que falha se surgir `sql(...)`, `sql.unsafe/query/raw` ou `${}` no lugar de tabela/coluna, e os testes enviam payloads de injeção em todos os campos de texto.
+- **Dados dos usuários:** o ranking exige login (só mostra nome de usuário e pontos; nunca e-mail ou id); e-mails só aparecem para o próprio usuário e para o admin; respostas de API são `no-store`; tentativas de login guardam e-mail/IP por 1 dia.
+- Cabeçalhos: CSP, HSTS, COOP/CORP `same-origin`, `X-Frame-Options`, `nosniff`, `Permissions-Policy`.
+
 - Senhas e palavra secreta só em hash (bcrypt); senha nova até 72 bytes; palavra secreta nova com 8+ caracteres e troca no Perfil.
 - Bloqueio de tentativas: 8 erros por IP ou 15 por e-mail em 15 minutos; a recuperação por palavra secreta tem chave própria e teto de 20 erros por dia. Cadastro limitado a 20 por hora por IP.
 - Partidas validadas no servidor; contadores de tentativas atômicos no banco (requisições paralelas não burlam o limite).
 - "Sair em todos os aparelhos" no Perfil invalida todas as sessões.
 - Defina na Vercel: `APP_URL`, `CHALLENGE_SECRET` e (com Apple) `OAUTH_TOKEN_KEY`; o painel do admin avisa se faltarem.
 - Limites conhecidos: o app não confirma e-mail no cadastro (por isso a conta só é unificada com login social após confirmar a senha) e jogos de lógica podem ser resolvidos por robôs.
+
+## Confirmação de e-mail
+
+Desligada por padrão: **Configurações → Confirmação de e-mail**. Ligada, quem se cadastra com senha recebe um link (uso único, 24 h; o banco guarda só o hash do token) e **não usa o app até confirmar** (o servidor responde `403 email_unverified`). Contas que já existiam quando você liga o recurso **não** são barradas. Login com Google/Apple já conta como e-mail confirmado. Se alguém cadastrar com senha o e-mail de outra pessoa (e nunca confirmar), o dono verdadeiro que entrar pelo Google/Apple fica com a conta e a senha cadastrada antes é apagada.
+
+| Variável (servidor) | O que é |
+| --- | --- |
+| `RESEND_API_KEY` | chave da API do [Resend](https://resend.com). **Sensitive.** |
+| `EMAIL_FROM` | remetente com domínio verificado no Resend, ex.: `Thinkrplay <nao-responda@seudominio.com>` |
+
+Passos: crie a conta no Resend → verifique seu domínio (registros DNS) → crie a chave → defina as duas variáveis → rode a migração `011` → ligue o interruptor. Reenvios: no máximo 3 por hora por conta.
+
+## Partidas suspeitas
+
+Cada partida concluída guarda o ritmo (`tempo ÷ mínimo humano`). Em **Cadastros → 🤖 Partidas suspeitas** o admin vê quem teve 3 ou mais partidas nos últimos 7 dias abaixo de 1,5× o mínimo. É só um sinal para investigar: **nada é bloqueado automaticamente** (um jogador muito bom também pode aparecer). Precisa da migração `012`.
+
+## App nativo (Android e iOS)
+
+Os projetos `android/` e `ios/` (Capacitor) abrem **este mesmo site** num WebView: a sessão, a API, o ranking e as atualizações são as da web, sem manter dois códigos. Dentro do app (User-Agent `ThinkrplayApp`, ver `lib/platform.ts`) ficam **ocultos**: login com Google/Apple (o Google bloqueia login em WebView), compra do Premium (as lojas exigem a cobrança interna delas) e anúncios do AdSense (em app seria AdMob).
+
+```bash
+# 1) uma vez: defina o endereço publicado e o ID do pacote (capacitor.config.ts: appId)
+export CAP_SERVER_URL=https://seudominio.com
+npm run cap:sync        # build + copia a configuração para android/ e ios/
+npm run cap:android     # abre o Android Studio → Build → Generate Signed Bundle (.aab)
+npm run cap:ios         # abre o Xcode (só no Mac) → Product → Archive
+npm run cap:assets      # se trocar o ícone/splash em assets/ (icon-only.png, splash.png)
+```
+
+- **Contas de loja:** Google Play Console (taxa única de US$ 25) e Apple Developer Program (US$ 99/ano). O `appId` (`com.thinkrplay.app`) não muda depois de publicar.
+- **Android:** gere o `.aab` assinado (crie e **guarde** o keystore) e envie à Play Console. **iOS:** precisa de Mac com Xcode e `pod install` na pasta `ios/App`.
+- **Aprovação das lojas:** a Apple costuma recusar apps que são só um site embrulhado (diretriz 4.2). Para aumentar a chance, publique primeiro como PWA ou acrescente recursos nativos (notificações, compartilhamento). Política de privacidade e exclusão de conta (já existem no app) são exigidas pelas duas lojas.
+- **Premium nas lojas:** para vender dentro do app é preciso Google Play Billing / compra integrada da Apple (outro fluxo, não incluso). Enquanto isso o Premium só é vendido pela web.
+- O `android/` já vem com `allowBackup=false` e tráfego só por HTTPS. Os arquivos gerados (`capacitor.config.json`, `public/`) ficam fora do git: rode `npm run cap:sync` após clonar.
+- Não consegui compilar o APK/IPA no ambiente de desenvolvimento (sem Android SDK/Xcode): faça o primeiro build local e teste num aparelho.
 
 ## Aceite dos Termos e da Privacidade
 
@@ -194,6 +233,8 @@ O SQL fica em **migrações numeradas** (`db/migrations/`). Cada uma roda sozinh
 | `db/migrations/008_oauth_login.sql` | Login com Google/Apple: `oauth_identities` e senha opcional |
 | `db/migrations/009_signup_method.sql` | Origem do cadastro (`signup_method`) e `email_verified` |
 | `db/migrations/010_privacy_acceptance.sql` | Aceite separado da Política de Privacidade (`privacy_version`) |
+| `db/migrations/011_email_verification.sql` | Confirmação de e-mail: `email_tokens` e `users.verification_required` |
+| `db/migrations/012_play_signals.sql` | Ritmo das partidas (`plays.pace_ratio`) para o painel de suspeitos |
 | `db/schema.sql` | Tudo junto, para banco novo. **Gerado** das migrações (`npm run db:schema`) |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
 | `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas |

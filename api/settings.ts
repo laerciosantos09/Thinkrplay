@@ -3,6 +3,7 @@ import { APP_SETTINGS, isAppSettingEnabled, listGames } from './_lib/games.js';
 import { GAME_SLUGS, requireAdmin, requireSession, route } from './_lib/http.js';
 import { premiumState } from './_lib/premium.js';
 import { PROVIDERS, providerConfigured, settingKey } from './_lib/oauth.js';
+import { mailConfigured } from './_lib/mailer.js';
 import { energyState } from './_lib/energy.js';
 import { ENERGY } from '../lib/energy.js';
 
@@ -15,6 +16,8 @@ const MIGRATIONS: Record<string, string> = {
   oauth_identities: '008_oauth_login.sql',
   signup_method: '009_signup_method.sql',
   privacy_version: '010_privacy_acceptance.sql',
+  email_tokens: '011_email_verification.sql',
+  pace_ratio: '012_play_signals.sql',
 };
 
 // Variáveis recomendadas que estão faltando (só o administrador vê o aviso).
@@ -60,7 +63,9 @@ export default route(['GET', 'POST'], async (req) => {
            to_regclass('public.subscriptions') IS NOT NULL AS subscriptions, to_regclass('public.play_energy') IS NOT NULL AS play_energy,
            to_regclass('public.oauth_identities') IS NOT NULL AS oauth_identities,
            EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'signup_method') AS signup_method,
-           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'privacy_version') AS privacy_version`)[0];
+           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'privacy_version') AS privacy_version,
+           to_regclass('public.email_tokens') IS NOT NULL AS email_tokens,
+           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'plays' AND column_name = 'pace_ratio') AS pace_ratio`)[0];
   const missing = Object.keys(MIGRATIONS).filter((table) => !present[table]).map((table) => MIGRATIONS[table]);
   // Não oferece um plano que não dá para contratar: sem a tabela de assinaturas (006 pendente) o Premium fica indisponível.
   if (!present.subscriptions) premium.available = false;
@@ -71,8 +76,11 @@ export default route(['GET', 'POST'], async (req) => {
     const available = Boolean(present.oauth_identities && present.signup_method) && enabled && providerConfigured(p);
     login[p] = session.role === 'admin' ? { enabled, configured: providerConfigured(p), available } : { available };
   }
+  const evEnabled = await isAppSettingEnabled('email_verification');
+  const evAvailable = Boolean(present.email_tokens) && evEnabled && mailConfigured();
   return {
     login,
+    emailVerification: session.role === 'admin' ? { enabled: evEnabled, configured: mailConfigured(), available: evAvailable } : { available: evAvailable },
     ...(session.role === 'admin' ? { setup: { missingMigrations: missing, missingEnv: missingEnv() } } : {}),
     games: await listGames(),
     ads: { enabled: await isAppSettingEnabled('ads') },

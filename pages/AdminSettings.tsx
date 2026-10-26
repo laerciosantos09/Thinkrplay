@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ADS, AdPlacement, GAMES } from '../config';
-import { AppSettings, EnergySettings, PremiumState, setAdsEnabled, setLoginEnabled, setEnergyEnabled, setGameEnabled, setPremiumEnabled } from '../services/api';
+import { AppSettings, EnergySettings, PremiumState, setAdsEnabled, setLoginEnabled, setEmailVerificationEnabled, setEnergyEnabled, setGameEnabled, setPremiumEnabled } from '../services/api';
 import { GameSetting, LoginProvider } from '../types';
 import { PROVIDER_NAMES, ProviderIcon } from '../components/SocialButtons';
 
@@ -10,6 +10,7 @@ interface AdminSettingsProps {
   premium: PremiumState | null;
   energy: EnergySettings | null;
   login: AppSettings['login'] | null;
+  emailVerification: AppSettings['emailVerification'] | null;
   onChange: (settings: AppSettings) => void;
   onUsers: () => void;
   onBack: () => void;
@@ -38,7 +39,7 @@ const LOGIN_VARS: Record<LoginProvider, string[]> = {
   apple: ['APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY'],
 };
 
-const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premium, energy, login, onChange, onUsers, onBack }) => {
+const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premium, energy, login, emailVerification, onChange, onUsers, onBack }) => {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const state = new Map(games.map((g) => [g.slug, g]));
@@ -296,6 +297,44 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ games, adsEnabled, premiu
             </div>
           );
         })}
+      </section>
+
+      <section className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        <header className="p-6 border-b border-slate-100">
+          <h2 className="text-xl font-extrabold text-ink-800">Confirmação de e-mail</h2>
+          <p className="text-sm text-slate-500">Quem se cadastra com senha precisa abrir um link enviado por e-mail antes de usar o app. Contas que já existem não são afetadas.</p>
+        </header>
+        <div className="flex items-center gap-4 p-5">
+          <div className="flex-1 min-w-0">
+            <p className={`font-extrabold ${emailVerification?.enabled ? 'text-ink-800' : 'text-slate-400'}`}>Exigir confirmação de e-mail</p>
+            <p className="text-xs text-slate-400">
+              {!emailVerification?.enabled
+                ? 'Desligado: o cadastro libera o app na hora.'
+                : emailVerification.available
+                  ? 'Ligado: novos cadastros por senha ficam bloqueados até confirmar.'
+                  : emailVerification.configured
+                    ? 'Ligado, mas sem efeito: falta rodar a migração 011 no banco.'
+                    : 'Ligado, mas sem efeito: faltam as variáveis de envio de e-mail (veja abaixo).'}
+            </p>
+          </div>
+          <Switch
+            on={Boolean(emailVerification?.enabled)} disabled={busy !== null || !emailVerification}
+            label={`${emailVerification?.enabled ? 'Desligar' : 'Ligar'} confirmação de e-mail`}
+            onToggle={() => save('email_verification', () => setEmailVerificationEnabled(!emailVerification?.enabled))}
+          />
+        </div>
+        <ul className="px-5 pb-5 space-y-1.5 text-xs">
+          <li className="flex items-start gap-2">
+            <span aria-hidden="true">{emailVerification?.configured ? '✅' : '⚠️'}</span>
+            <span className="text-slate-600">
+              Variáveis do servidor (Vercel): <code className="font-bold">RESEND_API_KEY</code> e <code className="font-bold">EMAIL_FROM</code> — {emailVerification?.configured ? 'detectadas' : 'faltando'}
+            </span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span aria-hidden="true">ℹ️</span>
+            <span className="text-slate-600">O envio usa o Resend: crie a conta, verifique o domínio do remetente e use um <code className="font-bold">EMAIL_FROM</code> desse domínio (ex.: <code className="font-bold">Thinkrplay &lt;nao-responda@seudominio.com&gt;</code>).</span>
+          </li>
+        </ul>
       </section>
     </div>
   );

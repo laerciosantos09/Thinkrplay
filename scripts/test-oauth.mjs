@@ -204,6 +204,23 @@ assert.equal((await pg.query(`SELECT count(*)::int n FROM users WHERE email = 'd
 await okJson('login', { body: { email: 'dudu@gmail.com', password: 'senha-do-dudu-1' } }); // a senha continua valendo
 jar.clear();
 
+// cadastro com senha que nunca confirmou o e-mail (confirmação ligada): quem prova o e-mail pelo provedor fica com a conta,
+// e a senha/palavra secreta cadastradas antes (de um possível impostor) deixam de valer
+await pg.query(`INSERT INTO users (username, email, password_hash, secret_hash, verification_required) VALUES ('impostor', 'vitima@gmail.com', $1, 'h', true)`, [await bcrypt.hash('senha-do-impostor-1', 4)]);
+await api('login', { body: { email: 'vitima@gmail.com', password: 'senha-do-impostor-1' } });
+const impCookie = jar.get('session');
+jar.clear();
+f = await begin('google');
+assert.equal(loc(await finish('google', f.state, { claims: { sub: 'g-vitima', email: 'vitima@gmail.com', email_verified: true, name: 'Vitima Real' } })), '/', 'dono real entra direto');
+assert.equal((await pg.query(`SELECT count(*)::int n FROM users WHERE email = 'vitima@gmail.com'`)).rows[0].n, 1);
+const vit = (await pg.query(`SELECT password_hash, secret_hash, email_verified FROM users WHERE email = 'vitima@gmail.com'`)).rows[0];
+assert.deepEqual([vit.password_hash, vit.secret_hash, vit.email_verified], [null, null, true], 'credenciais do impostor apagadas');
+jar.clear();
+assert.equal((await api('login', { body: { email: 'vitima@gmail.com', password: 'senha-do-impostor-1' } })).statusCode, 401, 'senha do impostor não entra mais');
+jar.set('session', impCookie);
+assert.equal((await api('profile', { method: 'GET' })).statusCode, 401, 'sessão do impostor encerrada');
+jar.clear();
+
 // ---- Apple: POST form_post, nome só na primeira vez, token de atualização cifrado
 f = await begin('apple');
 assert.equal(f.u.searchParams.get('response_mode'), 'form_post');

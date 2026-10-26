@@ -181,6 +181,7 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, login, onPremium, onUs
             {user.role === 'admin' && <span className="ml-2 align-middle text-[10px] font-black uppercase bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">admin</span>}
           </p>
           <p className="text-sm text-slate-500 truncate">{user.email}</p>
+          {user.emailVerified && <p className="text-xs text-green-700 font-bold">✓ E-mail confirmado</p>}
           {since && <p className="text-xs text-slate-400">Membro desde {since}{user.signupMethod && <> · criada com {METHOD_NAMES[user.signupMethod]}</>}</p>}
           <p className="text-xs text-green-700 font-bold mt-1">
             {user.termsAccepted && <span className="mr-3">✓ Termos de Uso aceitos</span>}

@@ -3,6 +3,7 @@ import { LoginProvider, User } from '../types';
 import { APP_TAGLINE } from '../config';
 import Logo from '../components/Logo';
 import SocialButtons from '../components/SocialButtons';
+import { isNativeApp } from '../lib/platform';
 import { fetchProviders, login, recoverPassword, register } from '../services/api';
 
 type Mode = 'login' | 'register' | 'recover';
@@ -28,6 +29,7 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
 
   // Botões do Google/Apple só aparecem se o administrador ligou e o servidor está configurado.
   useEffect(() => {
+    if (isNativeApp) return; // login social não funciona no WebView do app nativo
     fetchProviders()
       .then((r) => setSocial((['google', 'apple'] as LoginProvider[]).filter((p) => r[p])))
       .catch(() => {});

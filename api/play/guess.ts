@@ -39,7 +39,7 @@ export default route(['POST'], async (req) => {
     }
     assertHumanPace(play, SEQUENCE_ROUNDS);
     const mistakes: number = (await sql`SELECT coalesce((state->>'mistakes')::int, 0) AS m FROM plays WHERE id = ${play.id}`)[0]?.m ?? 0;
-    return { correct: true, done: true, ...(await finishPlay(play, scoreSequence(play.tier, play.level, mistakes))) };
+    return { correct: true, done: true, ...(await finishPlay(play, scoreSequence(play.tier, play.level, mistakes), SEQUENCE_ROUNDS)) };
   }
 
   if (play.game === 'mastermind') {
@@ -60,7 +60,7 @@ export default route(['POST'], async (req) => {
 
     if (exact === cfg.length) {
       assertHumanPace(play, used);
-      return { exact, partial, done: true, won: true, ...(await finishPlay(play, scoreMastermind(play.tier, play.level, used, cfg.attempts))) };
+      return { exact, partial, done: true, won: true, ...(await finishPlay(play, scoreMastermind(play.tier, play.level, used, cfg.attempts), used)) };
     }
     if (used >= cfg.attempts) {
       await abandonPlay(play);

@@ -50,7 +50,7 @@ export interface FinishResult {
 
 // Encerra a partida em UM comando atômico: só quem "reivindicar" a partida primeiro conta, e só o PRIMEIRO acerto
 // de cada desafio avança o progresso e gera pontos (repetições não pontuam, impedindo farm do mesmo desafio).
-export const finishPlay = async (play: Play, points: number): Promise<FinishResult> => {
+export const finishPlay = async (play: Play, points: number, actions?: number): Promise<FinishResult> => {
   const rows = await sql`
     WITH claimed AS (
       UPDATE plays SET finished_at = now(), points = ${points}::int
@@ -77,8 +77,21 @@ export const finishPlay = async (play: Play, points: number): Promise<FinishResu
     )
     SELECT (SELECT count(*) FROM claimed)::int AS claimed, (SELECT count(*) FROM advanced)::int AS advanced`;
   if (rows[0].claimed !== 1) throw new HttpError(409, 'Esta partida já foi encerrada.');
+  await recordPace(play, actions);
   const awarded = rows[0].advanced === 1;
   return { points: awarded ? points : 0, awarded, progress: await loadProgress(play.user_id, play.game) };
+};
+
+// Sinal para o painel do admin: tempo gasto / mínimo plausível para um humano. Melhor esforço: nunca atrapalha a partida
+// (se a migração 012 ainda não rodou, a coluna não existe e o registro é ignorado).
+const recordPace = async (play: Play, actions?: number) => {
+  const min = (actions ?? 0) * (MIN_SECONDS_PER_ACTION[play.game] ?? 1);
+  if (!(min > 0)) return;
+  try {
+    await sql`UPDATE plays SET pace_ratio = ${Math.round((play.seconds / min) * 100) / 100}::real WHERE id = ${play.id}`;
+  } catch (err: any) {
+    if (err?.code !== '42703') console.error('Falha ao registrar o ritmo da partida:', err?.message ?? err);
+  }
 };
 
 export const abandonPlay = (play: Play) =>

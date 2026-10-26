@@ -13,6 +13,7 @@ import AdminUsers from './pages/AdminUsers';
 import Profile from './pages/Profile';
 import Premium from './pages/Premium';
 import LegalPage, { LEGAL_ROUTES } from './pages/Legal';
+import VerifyEmailGate from './components/VerifyEmailGate';
 import TermsGate from './components/TermsGate';
 import { SUPPORT_EMAIL } from './config';
 import { AdsProvider } from './components/ads/AdsContext';
@@ -20,6 +21,7 @@ import ConsentBanner from './components/ads/ConsentBanner';
 import { EnergyProvider } from './components/energy/EnergyContext';
 import Navbar from './components/Navbar';
 import { GameSetting, LoginProvider, User } from './types';
+import { isNativeApp } from './lib/platform';
 import { AUTH_ERRORS, AUTH_NOTICES } from './lib/authMessages';
 import { AppSettings, EnergySettings, EnergyState, PremiumState, fetchProfile, fetchSettings, logout as apiLogout, setTermsRequiredHandler, setUnauthorizedHandler } from './services/api';
 
@@ -44,6 +46,7 @@ const MainApp: React.FC = () => {
   const [missingEnv, setMissingEnv] = useState<{ name: string; why: string }[]>([]);
   const [settingsFailed, setSettingsFailed] = useState(false);
   const [login, setLogin] = useState<AppSettings['login'] | null>(null);
+  const [emailVerif, setEmailVerif] = useState<AppSettings['emailVerification'] | null>(null);
   // Retorno do login social (?auth_error / ?auth_notice): guarda a mensagem e limpa a barra de endereço.
   const [flash] = useState(() => {
     const q = new URLSearchParams(window.location.search);
@@ -72,7 +75,7 @@ const MainApp: React.FC = () => {
   // A sessão é um cookie HttpOnly; pergunta ao servidor quem está logado.
   useEffect(() => {
     fetchProfile()
-      .then((r) => { setUser(r.user); if (flash.error || flash.notice || flash.pending) setPage(flash.pending ? 'dashboard' : 'profile'); }) // voltou de conectar uma conta
+      .then((r) => { setUser(r.user); if (flash.error || flash.notice || flash.pending) setPage(flash.pending || flash.notice === AUTH_NOTICES.email_verified ? 'dashboard' : 'profile'); }) // voltou de conectar uma conta
       .catch(() => {})
       .finally(() => setChecking(false));
   }, [flash]);
@@ -83,6 +86,7 @@ const MainApp: React.FC = () => {
     setAdsEnabled(r.ads.enabled);
     setPremium(r.premium);
     setLogin(r.login ?? null);
+    setEmailVerif(r.emailVerification ?? null);
     setEnergyConfig(r.energy);
     setMissingMigrations(r.setup?.missingMigrations ?? []);
     setMissingEnv(r.setup?.missingEnv ?? []);
@@ -94,7 +98,7 @@ const MainApp: React.FC = () => {
   const refreshSettings = useCallback(() => fetchSettings().then(applySettings), [applySettings]);
 
   useEffect(() => {
-    if (!user || user.needsTerms) return; // sem aceite o servidor recusa tudo
+    if (!user || user.needsTerms || user.needsEmailVerification) return; // sem aceite/confirmação o servidor recusa tudo
     refreshSettings().catch(() => {
       setGames((g) => g ?? []); // sem resposta: o servidor continua barrando jogo desativado
       setSettingsFailed(true);
@@ -123,6 +127,7 @@ const MainApp: React.FC = () => {
   }
 
   // Quem ainda não aceitou a versão atual dos Termos/Privacidade precisa aceitar antes de continuar.
+  if (user.needsEmailVerification) return <VerifyEmailGate user={user} onVerified={setUser} onLogout={logout} />;
   if (user.needsTerms) return <TermsGate user={user} onAccepted={setUser} onLogout={logout} />;
 
   const home = () => setPage('dashboard');
@@ -130,13 +135,13 @@ const MainApp: React.FC = () => {
   const Game = GAME_PAGES[page];
 
   return (
-    <AdsProvider enabled={adsEnabled && !premium?.active}>
+    <AdsProvider enabled={adsEnabled && !premium?.active && !isNativeApp}>
     <EnergyProvider energy={energy} setState={setEnergyState} refresh={refreshSettings}
-      onPremium={premium?.available && !premium.active ? () => setPage('premium') : undefined}>
+      onPremium={!isNativeApp && premium?.available && !premium.active ? () => setPage('premium') : undefined}>
     <div className="min-h-screen bg-slate-50">
       <Navbar user={user} onLogout={logout} onHome={home} onRanking={() => setPage('ranking')} onProfile={() => setPage('profile')}
         onSettings={isAdmin ? () => setPage('settings') : undefined}
-        onPremium={premium && (premium.available || premium.active) ? () => setPage('premium') : undefined}
+        onPremium={!isNativeApp && premium && (premium.available || premium.active) ? () => setPage('premium') : undefined}
         premiumActive={premium?.active} />
       <main className="container mx-auto px-4 py-6 sm:py-8">
         {flashOpen && (flash.error || flash.notice) && (
@@ -162,13 +167,13 @@ const MainApp: React.FC = () => {
         ) : page === 'ranking' ? (
           <GlobalRanking onBack={home} isEnabled={isEnabled} />
         ) : page === 'profile' ? (
-          <Profile user={user} premium={premium} login={login} onPremium={() => setPage('premium')} onUserChange={setUser} onDeleted={clear} onBack={home} />
+          <Profile user={user} premium={isNativeApp ? null : premium} login={isNativeApp ? null : login} onPremium={() => setPage('premium')} onUserChange={setUser} onDeleted={clear} onBack={home} />
         ) : page === 'premium' && premium ? (
           <Premium premium={premium} energy={energy} justPaid={justPaid} onRefresh={refreshSettings} onBack={() => { setJustPaid(false); home(); }} />
         ) : page === 'users' && isAdmin ? (
           <AdminUsers onBack={() => setPage('settings')} />
         ) : page === 'settings' && isAdmin ? (
-          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} premium={premium} energy={energy} login={login} onChange={applySettings} onUsers={() => setPage('users')} onBack={home} />
+          <AdminSettings games={games ?? []} adsEnabled={adsEnabled} premium={premium} energy={energy} login={login} emailVerification={emailVerif} onChange={applySettings} onUsers={() => setPage('users')} onBack={home} />
         ) : (
           <Dashboard onSelectGame={setPage} onGoToRanking={() => setPage('ranking')} isEnabled={isEnabled} loading={games === null} />
         )}

@@ -211,3 +211,32 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_accepted_at timestamptz;
 
 UPDATE users SET privacy_version = terms_version, privacy_accepted_at = terms_accepted_at
 WHERE privacy_version IS NULL AND terms_version IS NOT NULL;
+
+-- ===== 011_email_verification.sql =====
+-- 011 · Confirmação de e-mail no cadastro (ligável pelo administrador).
+--  - email_tokens: links de confirmação de uso único (guarda só o HASH do token) e com validade
+--  - users.verification_required: true para contas criadas com a confirmação ligada. Só elas ficam barradas até confirmar;
+--    contas antigas não são afetadas quando o administrador liga o recurso
+-- Pode ser executado várias vezes sem problema.
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_required boolean NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS email_tokens (
+  id bigserial PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS email_tokens_user_idx ON email_tokens (user_id, created_at DESC);
+
+-- ===== 012_play_signals.sql =====
+-- 012 · Sinais para detectar partidas suspeitas (robôs).
+--  - pace_ratio: tempo gasto dividido pelo mínimo plausível para um humano naquela partida (perto de 1 = ritmo de robô)
+-- Só alimenta o painel do administrador; nada é bloqueado automaticamente. Pode ser executado várias vezes.
+
+ALTER TABLE plays ADD COLUMN IF NOT EXISTS pace_ratio real;
+
+CREATE INDEX IF NOT EXISTS plays_pace_idx ON plays (user_id, finished_at DESC) WHERE pace_ratio IS NOT NULL;

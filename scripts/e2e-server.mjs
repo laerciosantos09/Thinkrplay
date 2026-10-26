@@ -39,7 +39,9 @@ process.env.STRIPE_SECRET_KEY ??= 'sk_test_e2e'; process.env.STRIPE_PRICE_ID ??=
 const { createHmac } = await import('node:crypto');
 const { Readable } = await import('node:stream');
 const realFetch = globalThis.fetch;
+globalThis.sentMails = [];
 globalThis.fetch = async (url, init = {}) => {
+  if (String(url).startsWith('https://api.resend.com')) { globalThis.sentMails.push(JSON.parse(init.body)); return { ok: true, status: 200, text: async () => '{}' }; }
   if (!String(url).startsWith('https://api.stripe.com/v1')) return realFetch(url, init);
   const path = String(url).replace('https://api.stripe.com/v1', '');
   const body = Object.fromEntries(new URLSearchParams(init.body ?? ''));
@@ -77,6 +79,7 @@ http.createServer(async (req, res) => {
     await pg.query(url.searchParams.get('q'));
     return res.end('ok');
   }
+  if (url.pathname === '/__mail') return res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(globalThis.sentMails)); // só para teste: e-mails "enviados"
   if (url.pathname === '/__energy') { // só para teste: "envelhece" o relógio de recarga (segundos)
     await pg.query(`UPDATE play_energy SET refilled_at = now() - ($1 || ' seconds')::interval`, [url.searchParams.get('ago')]);
     return res.end('ok');

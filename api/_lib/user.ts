@@ -7,6 +7,9 @@ export const legalFlags = (row: Record<string, any>) => {
   return { termsAccepted, privacyAccepted, accepted: termsAccepted && privacyAccepted };
 };
 
+// Contas criadas com a confirmação de e-mail ligada ficam barradas até confirmar (contas antigas não).
+export const needsEmailVerification = (row: Record<string, any>) => row.verification_required === true && row.email_verified !== true;
+
 // Dados do usuário que podem ir para o navegador (nunca hashes).
 export const publicUser = (row: Record<string, any>) => ({
   id: row.id as string,
@@ -17,6 +20,8 @@ export const publicUser = (row: Record<string, any>) => ({
   signupMethod: (row.signup_method as string | undefined) ?? 'password', // por onde a conta foi criada
   termsAccepted: legalFlags(row).termsAccepted,
   privacyAccepted: legalFlags(row).privacyAccepted,
+  emailVerified: row.email_verified === true,
+  needsEmailVerification: needsEmailVerification(row),
   needsTerms: !legalFlags(row).accepted,
 });
 

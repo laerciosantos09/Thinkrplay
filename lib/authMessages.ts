@@ -8,9 +8,11 @@ export const AUTH_ERRORS: Record<string, string> = {
   email_in_use: 'Já existe uma conta com este e-mail. Entre com seu e-mail e senha e conecte o Google/Apple em Meu perfil.',
   session: 'Sua sessão expirou. Entre novamente e tente conectar a conta.',
   identity_in_use: 'Esta conta Google/Apple já está conectada a outro usuário.',
+  verify_failed: 'Link de confirmação inválido, já usado ou expirado. Entre e peça um novo.',
   already_linked: 'Você já conectou uma conta deste provedor.',
 };
 export const AUTH_NOTICES: Record<string, string> = {
+  email_verified: 'E-mail confirmado. Tudo liberado!',
   linked_google: 'Conta Google conectada.',
   linked_apple: 'Conta Apple conectada.',
 };

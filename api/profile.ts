@@ -5,6 +5,8 @@ import { assertNotLocked, recordFailure } from './_lib/limit.js';
 import { publicUser } from './_lib/user.js';
 import { ACTIVE_STATUSES, getSubscription } from './_lib/premium.js';
 import { stripe, stripeConfigured } from './_lib/stripe.js';
+import { throttle } from './_lib/limit.js';
+import { sendVerification, verificationAvailable } from './_lib/verification.js';
 import { identitiesTableExists, revokeApple, isProvider } from './_lib/oauth.js';
 import { PRIVACY_VERSION, TERMS_VERSION, RESERVED_USERNAMES, USERNAME_PATTERN } from '../lib/legal.js';
 
@@ -20,6 +22,31 @@ const connections = async (id: string): Promise<string[]> =>
   (await identitiesTableExists())
     ? (await sql`SELECT provider FROM oauth_identities WHERE user_id = ${id} ORDER BY provider`).map((r) => r.provider as string)
     : [];
+
+// Sinal de robô: partidas concluídas perto do tempo mínimo humano (pace_ratio = tempo / mínimo). Só informa; nada é bloqueado.
+export const SUSPECT_RATIO = 1.5;
+const listSuspicious = async () => {
+  try {
+    const rows = await sql`
+      SELECT u.id, u.username, u.email,
+             count(*) FILTER (WHERE p.pace_ratio < ${SUSPECT_RATIO})::int AS flagged,
+             count(*)::int AS plays,
+             min(p.pace_ratio)::float AS best_ratio,
+             max(p.finished_at) AS last_at
+      FROM plays p JOIN users u ON u.id = p.user_id
+      WHERE p.pace_ratio IS NOT NULL AND p.finished_at > now() - interval '7 days'
+      GROUP BY u.id
+      HAVING count(*) FILTER (WHERE p.pace_ratio < ${SUSPECT_RATIO}) >= 3
+      ORDER BY flagged DESC, best_ratio ASC LIMIT 50`;
+    return {
+      available: true, threshold: SUSPECT_RATIO,
+      users: rows.map((r) => ({ id: r.id, username: r.username, email: r.email, flagged: r.flagged, plays: r.plays, bestRatio: Number(r.best_ratio.toFixed(2)), lastAt: new Date(r.last_at).toISOString() })),
+    };
+  } catch (err: any) {
+    if (err?.code === '42703') return { available: false, threshold: SUSPECT_RATIO, users: [] }; // migração 012 pendente
+    throw err;
+  }
+};
 
 const PAGE_SIZE = 25;
 const listUsers = async (q: string, page: number) => {
@@ -87,6 +114,10 @@ export default route(['GET', 'POST'], async (req, res) => {
     if (user.role !== 'admin') throw new HttpError(403, 'Acesso restrito ao administrador.');
     return await listUsers(String(req.query.q ?? '').trim().slice(0, 60), Math.max(1, Number(req.query.page) || 1));
   }
+  if (req.method === 'GET' && req.query?.suspicious) { // partidas com ritmo de robô, só para administrador
+    if (user.role !== 'admin') throw new HttpError(403, 'Acesso restrito ao administrador.');
+    return await listSuspicious();
+  }
   if (req.method === 'GET') return { user: await me(), legalVersion: { terms: TERMS_VERSION, privacy: PRIVACY_VERSION } };
 
   const body = req.body ?? {};
@@ -123,6 +154,16 @@ export default route(['GET', 'POST'], async (req, res) => {
         UPDATE users SET password_hash = ${hash}, token_version = token_version + 1 WHERE id = ${user.id}
         RETURNING token_version`;
       await startSession(req, res, { id: user.id, version: rows[0].token_version });
+      return { ok: true };
+    }
+
+    case 'resend_verification': {
+      // Reenvia o link de confirmação de e-mail (no máximo 3 por hora por conta e 10 por IP).
+      if (user.email_verified === true) throw new HttpError(400, 'Seu e-mail já está confirmado.');
+      if (!(await verificationAvailable())) throw new HttpError(503, 'A confirmação de e-mail não está disponível no momento.', true);
+      await throttle(`verify:${user.id}`, ip, 3);
+      await throttle('verify-ip', ip, 10);
+      await sendVerification(req, { id: user.id, email: user.email });
       return { ok: true };
     }
 

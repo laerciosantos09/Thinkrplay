@@ -12,6 +12,8 @@ export interface User {
   needsTerms?: boolean; // falta aceitar um dos dois: o app fica bloqueado até aceitar os dois
   signupMethod?: 'password' | LoginProvider; // por onde a conta foi criada
   loginMethods?: LoginMethod[]; // flags: formas de entrar ativas
+  emailVerified?: boolean; // e-mail confirmado (link do e-mail ou provedor Google/Apple)
+  needsEmailVerification?: boolean; // conta criada com a confirmação ligada e ainda não confirmada: bloqueada até confirmar
   hasPassword?: boolean; // contas criadas pelo Google/Apple começam sem senha
   connections?: LoginProvider[]; // provedores de login conectados
 }

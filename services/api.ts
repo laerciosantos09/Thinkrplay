@@ -32,7 +32,7 @@ const request = async <T,>(path: string, init: { method?: string; body?: unknown
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith('auth/')) onUnauthorized();
-    if (res.status === 403 && data.code === 'terms_required') onTermsRequired(); // o servidor barrou: volta para a tela de aceite
+    if (res.status === 403 && (data.code === 'terms_required' || data.code === 'email_unverified')) onTermsRequired(); // o servidor barrou: volta para a tela de aceite
     throw new ApiError(res.status, data.error ?? 'Algo deu errado.', data);
   }
   return data as T;
@@ -110,6 +110,7 @@ export interface AppSettings {
   premium: PremiumState;
   energy: EnergySettings;
   login: Record<LoginProvider, LoginProviderState>;
+  emailVerification: { available: boolean; enabled?: boolean; configured?: boolean };
   setup?: { missingMigrations: string[]; missingEnv?: { name: string; why: string }[] }; // só para administradores: migrações do banco que faltam
 }
 export const fetchSettings = () => request<AppSettings>('settings');
@@ -118,6 +119,11 @@ export const setAdsEnabled = (enabled: boolean) => request<AppSettings>('setting
 export const setEnergyEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'energy', enabled } });
 export const setLoginEnabled = (provider: LoginProvider, enabled: boolean) =>
   request<AppSettings>('settings', { body: { setting: `login_${provider}`, enabled } });
+export const setEmailVerificationEnabled = (enabled: boolean) =>
+  request<AppSettings>('settings', { body: { setting: 'email_verification', enabled } });
+export const resendVerification = () => request<{ ok: true }>('profile', { body: { action: 'resend_verification' } });
+export interface SuspiciousUser { id: string; username: string; email: string; flagged: number; plays: number; bestRatio: number; lastAt: string }
+export const fetchSuspicious = () => request<{ available: boolean; threshold: number; users: SuspiciousUser[] }>('profile?suspicious=1');
 export const setPremiumEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'premium', enabled } });
 
 // Premium: abre o pagamento / o portal de assinatura do Stripe (devolvem a URL para redirecionar).

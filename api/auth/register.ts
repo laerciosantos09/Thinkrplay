@@ -1,11 +1,13 @@
 import bcrypt from 'bcryptjs';
 import { HttpError, sql } from '../_lib/db.js';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { clientIp, newPassword, route, startSession, str } from '../_lib/http.js';
+import { consumeVerification, sendVerification, verificationAvailable } from '../_lib/verification.js';
 import { throttle } from '../_lib/limit.js';
 import { publicUser } from '../_lib/user.js';
 import { PRIVACY_VERSION, TERMS_VERSION, RESERVED_USERNAMES, USERNAME_PATTERN } from '../../lib/legal.js';
 
-export default route(['POST'], async (req, res) => {
+const register = route(['POST'], async (req, res) => {
   const username = str(req.body?.username, 'Nome de usuário', 3, 24);
   const email = str(req.body?.email, 'E-mail', 5, 120).toLowerCase();
   const password = newPassword(req.body?.password, 'Senha');
@@ -26,6 +28,8 @@ export default route(['POST'], async (req, res) => {
     bcrypt.hash(secretWord, 11),
   ]);
 
+  // Confirmação de e-mail ligada (e configurada): a conta nasce barrada até o link do e-mail ser aberto.
+  const mustVerify = await verificationAvailable();
   // Sem a coluna de privacidade (migração 010 pendente) o aceite único continua valendo para os dois documentos.
   const hasPrivacy = Boolean((await sql`SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'privacy_version'`)[0]);
   const rows = hasPrivacy
@@ -41,6 +45,38 @@ export default route(['POST'], async (req, res) => {
         RETURNING *`;
   if (rows.length === 0) throw new HttpError(409, 'Nome de usuário ou e-mail já cadastrado.');
 
-  await startSession(req, res, { id: rows[0].id, version: rows[0].token_version });
-  return { user: publicUser(rows[0]) };
+  let user = rows[0];
+  let emailSent = false;
+  if (mustVerify) {
+    await sql`UPDATE users SET verification_required = true WHERE id = ${user.id}`;
+    user = { ...user, verification_required: true };
+    try {
+      await sendVerification(req, user as { id: string; email: string });
+      emailSent = true;
+    } catch (err) {
+      console.error('Falha ao enviar a confirmação de e-mail:', err instanceof Error ? err.message : err); // a pessoa pode pedir o reenvio
+    }
+  }
+  await startSession(req, res, { id: user.id, version: user.token_version });
+  return { user: publicUser(user), emailSent };
 });
+
+// GET /api/auth/register?action=verify&token=... : link do e-mail de confirmação (volta para o app com um aviso).
+const verifyLink = async (req: VercelRequest, res: VercelResponse) => {
+  let ok = false;
+  try {
+    ok = await consumeVerification(String(req.query.token ?? ''));
+  } catch (err) {
+    console.error('Confirmação de e-mail falhou:', err);
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer'); // o token está na URL: não vaza em cabeçalhos
+  res.status(302);
+  res.setHeader('Location', ok ? '/?auth_notice=email_verified' : '/?auth_error=verify_failed');
+  res.end();
+};
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method === 'GET' && req.query?.action === 'verify') return verifyLink(req, res);
+  return register(req, res);
+}
