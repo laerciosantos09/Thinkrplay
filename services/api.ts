@@ -66,6 +66,9 @@ export const fetchProviders = () => request<Record<LoginProvider, boolean>>('oau
 // Um flag por documento: manda só o que ainda falta aceitar.
 export const acceptTerms = (docs: { terms?: boolean; privacy?: boolean }) =>
   request<{ user: User }>('profile', { body: { action: 'accept_terms', ...docs } });
+export const changeSecret = (currentPassword: string, secretWord: string) =>
+  request<{ ok: true }>('profile', { body: { action: 'secret', currentPassword, secretWord } });
+export const logoutEverywhere = () => request<{ ok: true }>('profile', { body: { action: 'logout_all' } });
 export const logout = () => request<{ ok: true }>('profile', { body: { action: 'logout' } });
 export const recoverPassword = (body: { email: string; secretWord: string; newPassword: string }) =>
   request<{ ok: true }>('auth/recover', { body });
@@ -107,7 +110,7 @@ export interface AppSettings {
   premium: PremiumState;
   energy: EnergySettings;
   login: Record<LoginProvider, LoginProviderState>;
-  setup?: { missingMigrations: string[] }; // só para administradores: migrações do banco que faltam
+  setup?: { missingMigrations: string[]; missingEnv?: { name: string; why: string }[] }; // só para administradores: migrações do banco que faltam
 }
 export const fetchSettings = () => request<AppSettings>('settings');
 export const setGameEnabled = (game: string, enabled: boolean) => request<AppSettings>('settings', { body: { game, enabled } });

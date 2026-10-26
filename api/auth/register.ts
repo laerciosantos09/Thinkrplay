@@ -9,7 +9,7 @@ export default route(['POST'], async (req, res) => {
   const username = str(req.body?.username, 'Nome de usuário', 3, 24);
   const email = str(req.body?.email, 'E-mail', 5, 120).toLowerCase();
   const password = newPassword(req.body?.password, 'Senha');
-  const secretWord = str(req.body?.secretWord, 'Palavra secreta', 4, 100).toLowerCase();
+  const secretWord = str(req.body?.secretWord, 'Palavra secreta', 8, 100).toLowerCase();
 
   if (req.body?.acceptTerms !== true) throw new HttpError(400, 'É necessário aceitar os Termos de Uso.');
   if (req.body?.acceptPrivacy !== true) throw new HttpError(400, 'É necessário aceitar a Política de Privacidade.');

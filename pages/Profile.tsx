@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { LoginProvider, User } from '../types';
 import { AppSettings, PremiumState } from '../services/api';
-import { changePassword, deleteAccount, unlinkProvider, updateUsername } from '../services/api';
+import { changePassword, changeSecret, deleteAccount, logoutEverywhere, unlinkProvider, updateUsername } from '../services/api';
 import { PROVIDER_NAMES, ProviderIcon } from '../components/SocialButtons';
 import LoginBadges, { METHOD_NAMES } from '../components/LoginBadges';
 import { USERNAME_PATTERN } from '../lib/legal';
@@ -72,6 +72,41 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, login, onPremium, onUs
   const [pw, setPw] = useState({ current: '', next: '', again: '' });
   const [pwMsg, setPwMsg] = useState<{ error?: string; ok?: string }>({});
   const [pwBusy, setPwBusy] = useState(false);
+
+  // palavra secreta e sessões
+  const [secret, setSecret] = useState({ current: '', word: '' });
+  const [secretMsg, setSecretMsg] = useState<{ error?: string; ok?: string }>({});
+  const [secretBusy, setSecretBusy] = useState(false);
+  const [allBusy, setAllBusy] = useState(false);
+  const [allError, setAllError] = useState<string | null>(null);
+
+  const saveSecret = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSecretBusy(true);
+    setSecretMsg({});
+    try {
+      await changeSecret(secret.current, secret.word);
+      setSecret({ current: '', word: '' });
+      setSecretMsg({ ok: 'Palavra secreta atualizada.' });
+    } catch (err) {
+      setSecretMsg({ error: errorText(err) });
+    } finally {
+      setSecretBusy(false);
+    }
+  };
+
+  const signOutEverywhere = async () => {
+    if (!window.confirm('Sair em todos os aparelhos, inclusive neste?')) return;
+    setAllBusy(true);
+    setAllError(null);
+    try {
+      await logoutEverywhere();
+      onDeleted(); // volta para a tela de login
+    } catch (err) {
+      setAllError(errorText(err));
+      setAllBusy(false);
+    }
+  };
 
   // excluir conta
   const [del, setDel] = useState({ password: '', confirm: '' });
@@ -234,6 +269,35 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, login, onPremium, onUs
             {pwBusy ? 'Salvando...' : hasPassword ? 'Alterar senha' : 'Definir senha'}
           </button>
         </form>
+      </Card>
+
+      {hasPassword && (
+        <Card title="Palavra secreta" hint="Usada para recuperar a senha se você esquecê-la. Escolha algo difícil de adivinhar (mínimo de 8 caracteres): quem souber a palavra consegue redefinir sua senha.">
+          <form onSubmit={saveSecret} className="space-y-3">
+            <div>
+              <label htmlFor="secret-current" className={label}>Senha atual</label>
+              <input id="secret-current" type="password" required className={input} autoComplete="current-password"
+                value={secret.current} onChange={(e) => setSecret({ ...secret, current: e.target.value })} />
+            </div>
+            <div>
+              <label htmlFor="secret-word" className={label}>Nova palavra secreta</label>
+              <input id="secret-word" required minLength={8} className={input} autoComplete="off"
+                value={secret.word} onChange={(e) => setSecret({ ...secret, word: e.target.value })} />
+            </div>
+            <Message error={secretMsg.error} ok={secretMsg.ok} />
+            <button disabled={secretBusy} className="bg-brand-600 text-white px-6 py-3 rounded-xl font-black disabled:opacity-40 hover:bg-brand-700">
+              {secretBusy ? 'Salvando...' : 'Salvar palavra secreta'}
+            </button>
+          </form>
+        </Card>
+      )}
+
+      <Card title="Sessões" hint="Perdeu um aparelho ou entrou em um computador emprestado? Encerre todas as sessões abertas.">
+        <Message error={allError} />
+        <button onClick={signOutEverywhere} disabled={allBusy}
+          className="mt-2 border-2 border-slate-200 text-slate-700 px-6 py-3 rounded-xl font-black hover:bg-slate-50 disabled:opacity-40">
+          {allBusy ? 'Saindo...' : 'Sair em todos os aparelhos'}
+        </button>
       </Card>
 
       {ads.active && (

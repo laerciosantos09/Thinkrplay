@@ -66,7 +66,7 @@ const checkPassword = async (user: Record<string, any>, password: string, ip: st
 };
 
 // GET: dados do próprio usuário (também usado para saber se há alguém logado).
-// POST { action }: logout | username | password | delete | unlink | accept_terms
+// POST { action }: logout | logout_all | username | password | secret | delete | unlink | accept_terms
 export default route(['GET', 'POST'], async (req, res) => {
   // Sair não exige sessão válida: sempre limpa o cookie.
   if (req.method === 'POST' && req.body?.action === 'logout') {
@@ -123,6 +123,22 @@ export default route(['GET', 'POST'], async (req, res) => {
         UPDATE users SET password_hash = ${hash}, token_version = token_version + 1 WHERE id = ${user.id}
         RETURNING token_version`;
       await startSession(req, res, { id: user.id, version: rows[0].token_version });
+      return { ok: true };
+    }
+
+    case 'secret': {
+      // Palavra secreta nova (recuperação de senha). Exige a senha atual, como qualquer ação sensível.
+      if (!user.password_hash) throw new HttpError(400, 'Defina uma senha antes de criar a palavra secreta.');
+      await checkPassword(user, str(body.currentPassword, 'Senha atual', 1, 100), ip, 'Senha atual incorreta.');
+      const word = str(body.secretWord, 'Palavra secreta', 8, 100).toLowerCase();
+      await sql`UPDATE users SET secret_hash = ${await bcrypt.hash(word, 11)} WHERE id = ${user.id}`;
+      return { ok: true };
+    }
+
+    case 'logout_all': {
+      // Encerra a sessão em TODOS os aparelhos (inclusive este): útil se um aparelho foi perdido ou emprestado.
+      await sql`UPDATE users SET token_version = token_version + 1 WHERE id = ${user.id}`;
+      endSession(res);
       return { ok: true };
     }
 

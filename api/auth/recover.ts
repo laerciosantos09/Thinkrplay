@@ -10,13 +10,15 @@ export default route(['POST'], async (req) => {
   const secretWord = str(req.body?.secretWord, 'Palavra secreta', 2, 100).toLowerCase();
   const newPassword = validNewPassword(req.body?.newPassword, 'Nova senha');
   const ip = clientIp(req);
-  await assertNotLocked(email, ip);
+  // Chave própria: erros na recuperação não trancam o login normal da conta (e vice-versa).
+  const key = `recover:${email}`;
+  await assertNotLocked(key, ip, { daily: true });
 
   const rows = await sql`SELECT id, secret_hash FROM users WHERE lower(email) = ${email}`;
   const found = rows[0];
   const ok = await bcrypt.compare(secretWord, found?.secret_hash ?? DUMMY);
   if (!found || !ok) {
-    await recordFailure(email, ip);
+    await recordFailure(key, ip);
     throw new HttpError(401, 'E-mail ou palavra secreta incorretos.');
   }
 

@@ -96,6 +96,15 @@ Assinatura **mensal** que **remove os anúncios** e mostra o **selo ⭐** no per
 
 > O endpoint do webhook desliga o leitor automático de corpo (`bodyParser: false`) para conferir a assinatura sobre o corpo bruto. Confirme com o teste do passo 6 depois do primeiro deploy.
 
+## Segurança: o que o app já faz
+
+- Senhas e palavra secreta só em hash (bcrypt); senha nova até 72 bytes; palavra secreta nova com 8+ caracteres e troca no Perfil.
+- Bloqueio de tentativas: 8 erros por IP ou 15 por e-mail em 15 minutos; a recuperação por palavra secreta tem chave própria e teto de 20 erros por dia. Cadastro limitado a 20 por hora por IP.
+- Partidas validadas no servidor; contadores de tentativas atômicos no banco (requisições paralelas não burlam o limite).
+- "Sair em todos os aparelhos" no Perfil invalida todas as sessões.
+- Defina na Vercel: `APP_URL`, `CHALLENGE_SECRET` e (com Apple) `OAUTH_TOKEN_KEY`; o painel do admin avisa se faltarem.
+- Limites conhecidos: o app não confirma e-mail no cadastro (por isso a conta só é unificada com login social após confirmar a senha) e jogos de lógica podem ser resolvidos por robôs.
+
 ## Aceite dos Termos e da Privacidade
 
 Cada documento é um **flag** do usuário (`terms_version` e `privacy_version`, com a data do aceite). Sem **os dois** aceitos na versão vigente, o usuário não usa o site nem o app: o servidor responde `403 terms_required` em todas as rotas (jogar, ranking, progresso, configurações, pagamento) e o app mostra a tela "Quase lá!". Só o Perfil funciona (registrar o aceite, sair, excluir a conta). Quem já aceitou não vê a tela de novo; ao mudar o texto de **um** documento, altere `TERMS_VERSION` ou `PRIVACY_VERSION` em `lib/legal.ts` e só aquele documento é pedido outra vez. Cadastro por senha exige marcar os dois; contas criadas pelo Google/Apple e admins criados por script aceitam no primeiro acesso. O admin vê os dois flags em **Cadastros**.

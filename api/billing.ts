@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { HttpError, sql } from './_lib/db.js';
 import { isAppSettingEnabled } from './_lib/games.js';
-import { requireSession, route } from './_lib/http.js';
+import { appBaseUrl, requireSession, route } from './_lib/http.js';
 import { getSubscription, isSubscriptionActive } from './_lib/premium.js';
 import { readRawBody, stripe, stripeConfigured, verifyStripeSignature } from './_lib/stripe.js';
 
@@ -23,12 +23,7 @@ const readJson = async (req: VercelRequest): Promise<Record<string, any>> => {
   }
 };
 
-const appUrl = (req: VercelRequest) => {
-  const configured = process.env.APP_URL?.replace(/\/+$/, '');
-  if (configured) return configured;
-  const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '');
-  return `${/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https'}://${host}`;
-};
+const appUrl = appBaseUrl;
 
 const appHandler = route(['POST'], async (req) => {
   const session = await requireSession(req);

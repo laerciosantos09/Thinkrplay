@@ -104,8 +104,8 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
               value={form.password} onChange={set('password')} placeholder="••••••••" />
           )}
           {mode !== 'login' && (
-            <Field label="Palavra Secreta (recuperação)" type="text" autoComplete="off" minLength={4}
-              value={form.secretWord} onChange={set('secretWord')} placeholder="Ex: Nome da sua escola" />
+            <Field label="Palavra Secreta (recuperação)" type="text" autoComplete="off" minLength={mode === 'register' ? 8 : undefined}
+              value={form.secretWord} onChange={set('secretWord')} placeholder="Ex: nome da sua primeira escola" />
           )}
           {mode === 'recover' && (
             <Field label="Nova senha" type="password" minLength={8} autoComplete="new-password"

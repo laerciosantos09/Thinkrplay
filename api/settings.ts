@@ -17,6 +17,17 @@ const MIGRATIONS: Record<string, string> = {
   privacy_version: '010_privacy_acceptance.sql',
 };
 
+// Variáveis recomendadas que estão faltando (só o administrador vê o aviso).
+const missingEnv = () => {
+  const out: { name: string; why: string }[] = [];
+  if (!process.env.APP_URL?.trim()) out.push({ name: 'APP_URL', why: 'endereço fixo do site para as URLs de retorno do login social e do pagamento' });
+  if (!process.env.CHALLENGE_SECRET?.trim()) out.push({ name: 'CHALLENGE_SECRET', why: 'segredo próprio dos desafios (hoje usa o JWT_SECRET)' });
+  if (providerConfigured('apple') && !process.env.OAUTH_TOKEN_KEY?.trim()) {
+    out.push({ name: 'OAUTH_TOKEN_KEY', why: 'chave própria para cifrar o token da Apple (trocar o JWT_SECRET sem ela impediria revogar contas Apple)' });
+  }
+  return out;
+};
+
 // GET: qualquer usuário logado vê os jogos habilitados, se os anúncios estão ligados e a situação do Premium.
 // POST: só administrador altera -> { game, enabled } (jogo) ou { setting: "ads" | "premium", enabled } (recurso do app).
 export default route(['GET', 'POST'], async (req) => {
@@ -62,7 +73,7 @@ export default route(['GET', 'POST'], async (req) => {
   }
   return {
     login,
-    ...(session.role === 'admin' ? { setup: { missingMigrations: missing } } : {}),
+    ...(session.role === 'admin' ? { setup: { missingMigrations: missing, missingEnv: missingEnv() } } : {}),
     games: await listGames(),
     ads: { enabled: await isAppSettingEnabled('ads') },
     premium,

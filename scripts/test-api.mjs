@@ -77,13 +77,13 @@ const solveMemory = async (tier, challenge) => {
 
 // --- auth
 assert.equal(await code('profile', { method: 'GET' }), 401);
-const reg = await call('auth/register', { body: { username: 'ana', email: 'Ana@x.com', password: 'senha-forte-1', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } });
+const reg = await call('auth/register', { body: { username: 'ana', email: 'Ana@x.com', password: 'senha-forte-1', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } });
 assert.equal(reg.statusCode, 200);
 assert.match(reg.headers['Set-Cookie'], /HttpOnly; SameSite=Strict/);
 assert.equal(reg.headers['Set-Cookie'].includes('Secure'), true);
-assert.equal(await code('auth/register', { body: { username: 'ANA', email: 'b@x.com', password: 'senha-forte-1', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } }), 409);
+assert.equal(await code('auth/register', { body: { username: 'ANA', email: 'b@x.com', password: 'senha-forte-1', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } }), 409);
 assert.equal((await ok('profile', { method: 'GET' })).user.username, 'ana');
-assert.equal(await code('auth/register', { body: { username: 'bob', email: 'bob@x.com', password: 'curta', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } }), 400);
+assert.equal(await code('auth/register', { body: { username: 'bob', email: 'bob@x.com', password: 'curta', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } }), 400);
 assert.equal(await code('profile', { method: 'GET', headers: { cookie: 'session=forjado' } }), 401);
 assert.equal(await code('auth/login', { body: { email: 'a@x.com', password: 'x' }, headers: { origin: 'https://evil.com' } }), 403);
 assert.equal(await code('auth/login', { body: { email: 'a@x.com', password: 'x' }, headers: { 'content-type': 'text/plain' } }), 415);
@@ -94,7 +94,7 @@ assert.equal(await code('auth/login', { body: { email: 'ana@x.com', password: 's
 assert.equal(await code('auth/recover', { body: { email: 'ana@x.com', secretWord: 'chute', newPassword: 'nova-senha-1' } }), 429);
 await pg.query('DELETE FROM auth_attempts');
 assert.equal(await code('auth/recover', { body: { email: 'ana@x.com', secretWord: 'chute', newPassword: 'nova-senha-1' } }), 401);
-await ok('auth/recover', { body: { email: 'ana@x.com', secretWord: 'ESCOLA', newPassword: 'nova-senha-1' } });
+await ok('auth/recover', { body: { email: 'ana@x.com', secretWord: 'ESCOLA-ANTIGA', newPassword: 'nova-senha-1' } });
 await ok('auth/login', { body: { email: 'ana@x.com', password: 'nova-senha-1' } });
 
 // --- validações de entrada e bloqueios
@@ -243,7 +243,7 @@ assert.equal(okRound.filter((r) => r.statusCode === 200).length, 1, 'a mesma rod
 assert.equal((await pg.query(`SELECT (state->>'round')::int r FROM plays WHERE id=$1`, [p.playId])).rows[0].r, 1);
 
 // --- cadastro: limite por IP e senha acima de 72 bytes (o bcrypt cortaria o resto)
-const cadastro = (over) => call('auth/register', { headers: { 'x-forwarded-for': '7.7.7.7' }, body: { username: 'lim', email: 'lim@x.com', password: 'senha-forte-9', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true, ...over } });
+const cadastro = (over) => call('auth/register', { headers: { 'x-forwarded-for': '7.7.7.7' }, body: { username: 'lim', email: 'lim@x.com', password: 'senha-forte-9', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true, ...over } });
 assert.equal((await cadastro({ password: 'a'.repeat(73) })).statusCode, 400, 'senha de 73 bytes');
 assert.equal((await cadastro({ password: 'é'.repeat(37) })).statusCode, 400, '74 bytes em 37 caracteres');
 for (let i = 0; i < 20; i++) await pg.query(`INSERT INTO auth_attempts (email, ip) VALUES ('register', 'register:7.7.7.7')`);
@@ -251,9 +251,33 @@ assert.equal((await cadastro({})).statusCode, 429, 'muitos cadastros do mesmo IP
 assert.equal((await call('auth/login', { headers: { 'x-forwarded-for': '7.7.7.7' }, body: { email: 'ana@x.com', password: 'errada-123' } })).statusCode, 401, 'cadastros não bloqueiam o login do mesmo IP');
 await pg.query(`DELETE FROM auth_attempts`);
 
+// --- palavra secreta e sair de todos os aparelhos
+assert.equal((await call('auth/register', { body: { username: 'fraca', email: 'fraca@x.com', password: 'senha-forte-9', secretWord: 'curta', acceptTerms: true, acceptPrivacy: true } })).statusCode, 400, 'palavra secreta com menos de 8 caracteres');
+assert.equal(await code('profile', { body: { action: 'secret', currentPassword: 'errada-123', secretWord: 'palavra-nova-1' } }), 403, 'exige a senha atual');
+assert.equal(await code('profile', { body: { action: 'secret', currentPassword: 'nova-senha-1', secretWord: 'curta' } }), 400);
+await ok('profile', { body: { action: 'secret', currentPassword: 'nova-senha-1', secretWord: 'Palavra-Nova-1' } });
+const anaDev1 = cookie;
+await ok('auth/login', { body: { email: 'ana@x.com', password: 'nova-senha-1' } }); const anaDev2 = cookie;
+cookie = anaDev1; await ok('profile', { body: { action: 'logout_all' } });
+cookie = anaDev2; assert.equal(await code('profile', { method: 'GET' }), 401, 'sair em todos os aparelhos derruba as outras sessões');
+cookie = ''; await ok('auth/login', { body: { email: 'ana@x.com', password: 'nova-senha-1' } });
+await pg.query(`DELETE FROM auth_attempts`);
+// recuperação: erros não trancam o login e há teto diário
+for (let i = 0; i < 8; i++) assert.equal(await code('auth/recover', { headers: { 'x-forwarded-for': `9.9.9.${i}` }, body: { email: 'ana@x.com', secretWord: 'errada-123', newPassword: 'nova-senha-9' } }), 401);
+assert.equal(await code('auth/login', { headers: { 'x-forwarded-for': '8.8.8.8' }, body: { email: 'ana@x.com', password: 'nova-senha-1' } }), 200, 'erros de recuperação não trancam o login');
+for (let i = 8; i < 20; i++) await pg.query(`INSERT INTO auth_attempts (email, ip, at) VALUES ('recover:ana@x.com', $1, now() - interval '3 hours')`, [`7.7.1.${i}`]);
+assert.equal(await code('auth/recover', { headers: { 'x-forwarded-for': '6.6.6.6' }, body: { email: 'ana@x.com', secretWord: 'palavra-nova-1', newPassword: 'nova-senha-9' } }), 429, 'teto diário da palavra secreta, mesmo com a palavra certa');
+// login: poucos erros de um desconhecido não trancam a conta (o limite por e-mail é maior que o por IP)
+await pg.query(`DELETE FROM auth_attempts`);
+for (let i = 0; i < 9; i++) await code('auth/login', { headers: { 'x-forwarded-for': `5.5.5.${i}` }, body: { email: 'ana@x.com', password: 'errada-123' } });
+assert.equal(await code('auth/login', { headers: { 'x-forwarded-for': '4.4.4.4' }, body: { email: 'ana@x.com', password: 'nova-senha-1' } }), 200, 'a dona entra mesmo com erros de outros IPs');
+for (let i = 0; i < 8; i++) await code('auth/login', { headers: { 'x-forwarded-for': '3.3.3.3' }, body: { email: 'naoexiste@x.com', password: 'x' } });
+assert.equal(await code('auth/login', { headers: { 'x-forwarded-for': '3.3.3.3' }, body: { email: 'ana@x.com', password: 'nova-senha-1' } }), 429, 'o IP que errou muito fica bloqueado');
+await pg.query(`DELETE FROM auth_attempts`);
+
 // --- partida de outro usuário / ranking / progresso por tier
 const anaCookie = cookie; cookie = '';
-await ok('auth/register', { body: { username: 'bia', email: 'bia@x.com', password: 'senha-forte-2', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } });
+await ok('auth/register', { body: { username: 'bia', email: 'bia@x.com', password: 'senha-forte-2', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } });
 assert.equal(await code('play/guess', { body: { playId: p.playId, guess: sec2 } }), 404);
 assert.deepEqual(await progressOf(), {}, 'outro usuário começa do zero');
 assert.equal((await start('memory', 'medium', 1)).statusCode, 403, 'progresso é por usuário');
@@ -270,7 +294,7 @@ const saved = process.env.JWT_SECRET;
 process.env.JWT_SECRET = 'curto';
 const leaked = await call('profile', { method: 'GET', headers: { cookie: 'session=x' } });
 assert.equal(leaked.statusCode, 401);
-const cfgErr = await call('auth/register', { body: { username: 'zed', email: 'zed@x.com', password: 'senha-forte-3', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true } });
+const cfgErr = await call('auth/register', { body: { username: 'zed', email: 'zed@x.com', password: 'senha-forte-3', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } });
 assert.equal(cfgErr.statusCode, 500);
 assert.ok(!/JWT|SECRET|segredo/i.test(JSON.stringify(cfgErr.body)), `vazou: ${JSON.stringify(cfgErr.body)}`);
 process.env.JWT_SECRET = saved;
@@ -336,7 +360,7 @@ cookie = adminCookie;
 assert.equal(await code('settings', { body: { game: 'memory', enabled: false } }), 403, 'ex-admin perde o acesso imediatamente');
 
 // --- Termos no cadastro e nomes reservados
-const reg2 = (over) => ({ body: { username: 'novo', email: 'novo@x.com', password: 'senha-forte-9', secretWord: 'escola', acceptTerms: true, acceptPrivacy: true, ...over } });
+const reg2 = (over) => ({ body: { username: 'novo', email: 'novo@x.com', password: 'senha-forte-9', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true, ...over } });
 cookie = '';
 assert.equal(await code('auth/register', reg2({ acceptTerms: undefined })), 400, 'sem aceitar os termos');
 assert.equal(await code('auth/register', reg2({ acceptTerms: 'true' })), 400, 'aceite precisa ser booleano true');
@@ -378,7 +402,7 @@ await ok('auth/login', { body: { email: 'carla@x.com', password: 'nova-senha-4' 
 const carla = cookie;
 assert.ok(!(await pg.query(`SELECT password_hash FROM users WHERE username='carla.m'`)).rows[0].password_hash.includes('nova-senha'), 'senha só em hash');
 // redefinir pela palavra secreta também derruba as sessões abertas
-await ok('auth/recover', { body: { email: 'carla@x.com', secretWord: 'escola', newPassword: 'recuperada-4' } });
+await ok('auth/recover', { body: { email: 'carla@x.com', secretWord: 'escola-antiga', newPassword: 'recuperada-4' } });
 assert.equal(await code('profile', { method: 'GET' }), 401, 'recuperar senha encerra sessões');
 await ok('auth/login', { body: { email: 'carla@x.com', password: 'recuperada-4' } });
 

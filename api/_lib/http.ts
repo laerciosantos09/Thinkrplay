@@ -95,8 +95,18 @@ export const requireAdmin = async (req: VercelRequest): Promise<Session> => {
   return session;
 };
 
+// IP do cliente. Na Vercel, x-vercel-forwarded-for é definido pela própria plataforma (o cliente não consegue forjar).
 export const clientIp = (req: VercelRequest) =>
-  String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? 'unknown').split(',')[0].trim();
+  String(req.headers['x-vercel-forwarded-for'] ?? req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? 'unknown').split(',')[0].trim();
+
+// Endereço público do app (URLs de retorno do OAuth e do Stripe). APP_URL manda; sem ela usa só o Host da requisição
+// (x-forwarded-host não é usado: pode ser enviado pelo cliente).
+export const appBaseUrl = (req: VercelRequest) => {
+  const configured = process.env.APP_URL?.trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  const host = String(req.headers.host ?? '');
+  return `${/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https'}://${host}`;
+};
 
 type Handler = (req: VercelRequest, res: VercelResponse) => Promise<unknown>;
 

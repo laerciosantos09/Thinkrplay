@@ -41,6 +41,7 @@ const MainApp: React.FC = () => {
   const [premium, setPremium] = useState<PremiumState | null>(null);
   const [energy, setEnergyConfig] = useState<EnergySettings | null>(null);
   const [missingMigrations, setMissingMigrations] = useState<string[]>([]);
+  const [missingEnv, setMissingEnv] = useState<{ name: string; why: string }[]>([]);
   const [settingsFailed, setSettingsFailed] = useState(false);
   const [login, setLogin] = useState<AppSettings['login'] | null>(null);
   // Retorno do login social (?auth_error / ?auth_notice): guarda a mensagem e limpa a barra de endereço.
@@ -84,6 +85,7 @@ const MainApp: React.FC = () => {
     setLogin(r.login ?? null);
     setEnergyConfig(r.energy);
     setMissingMigrations(r.setup?.missingMigrations ?? []);
+    setMissingEnv(r.setup?.missingEnv ?? []);
     setSettingsFailed(false);
   }, []);
 
@@ -143,12 +145,14 @@ const MainApp: React.FC = () => {
             <button onClick={() => setFlashOpen(false)} aria-label="Fechar aviso" className="shrink-0">✕</button>
           </div>
         )}
-        {isAdmin && (settingsFailed || missingMigrations.length > 0) && (
+        {isAdmin && (settingsFailed || missingMigrations.length > 0 || missingEnv.length > 0) && (
           <div role="alert" className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p className="font-extrabold">⚠️ Atenção, administrador</p>
             <p>
               {settingsFailed
                 ? 'Não foi possível carregar as configurações do app. Confira se as migrações do banco foram aplicadas e veja os logs da Vercel.'
+                : missingMigrations.length === 0
+                ? <>Variáveis recomendadas na Vercel: {missingEnv.map((v, i) => <span key={v.name}>{i > 0 && '; '}<strong>{v.name}</strong> ({v.why})</span>)}.</>
                 : <>Faltam migrações no banco: <strong>{missingMigrations.join(', ')}</strong>. Os recursos que dependem delas (anúncios, Premium, limite de partidas, login com Google/Apple) ficam desligados até você rodá-las no Neon, em ordem, e recarregar.</>}
             </p>
           </div>
