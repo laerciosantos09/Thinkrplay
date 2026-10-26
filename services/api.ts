@@ -2,6 +2,10 @@ import { GameSetting, LoginMethod, LoginProvider, RankingPeriod, Score, User } f
 import { Tier, TierProgress } from '../lib/tiers';
 
 let onUnauthorized: () => void = () => {};
+let onTermsRequired: () => void = () => {};
+export const setTermsRequiredHandler = (fn: () => void) => {
+  onTermsRequired = fn;
+};
 export const setUnauthorizedHandler = (fn: () => void) => {
   onUnauthorized = fn;
 };
@@ -28,6 +32,7 @@ const request = async <T,>(path: string, init: { method?: string; body?: unknown
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401 && !path.startsWith('auth/')) onUnauthorized();
+    if (res.status === 403 && (data.code === 'terms_required' || data.code === 'email_unverified')) onTermsRequired(); // o servidor barrou: volta para a tela de aceite
     throw new ApiError(res.status, data.error ?? 'Algo deu errado.', data);
   }
   return data as T;
@@ -41,10 +46,11 @@ export const login = (email: string, password: string, linkPending = false) =>
 export interface AdminUser {
   id: string; username: string; email: string; role: string; createdAt: string;
   signupMethod: LoginMethod; emailVerified: boolean; loginMethods: LoginMethod[];
+  termsAccepted: boolean; privacyAccepted: boolean;
 }
 export const fetchUsers = (q: string, page: number) =>
   request<{ users: AdminUser[]; total: number; page: number; pageSize: number }>(`profile?users=1&q=${encodeURIComponent(q)}&page=${page}`);
-export const register = (body: { username: string; email: string; password: string; secretWord: string; acceptTerms: boolean }) =>
+export const register = (body: { username: string; email: string; password: string; secretWord: string; acceptTerms: boolean; acceptPrivacy: boolean }) =>
   request<{ user: User }>('auth/register', { body });
 export const updateUsername = (username: string) =>
   request<{ user: User }>('profile', { body: { action: 'username', username } });
@@ -57,7 +63,12 @@ export const unlinkProvider = (provider: LoginProvider) =>
   request<{ ok: true; connections: LoginProvider[] }>('profile', { body: { action: 'unlink', provider } });
 // Quais botões de login social mostrar (público: serve para a tela de login).
 export const fetchProviders = () => request<Record<LoginProvider, boolean>>('oauth/providers');
-export const acceptTerms = () => request<{ user: User }>('profile', { body: { action: 'accept_terms' } });
+// Um flag por documento: manda só o que ainda falta aceitar.
+export const acceptTerms = (docs: { terms?: boolean; privacy?: boolean }) =>
+  request<{ user: User }>('profile', { body: { action: 'accept_terms', ...docs } });
+export const changeSecret = (currentPassword: string, secretWord: string) =>
+  request<{ ok: true }>('profile', { body: { action: 'secret', currentPassword, secretWord } });
+export const logoutEverywhere = () => request<{ ok: true }>('profile', { body: { action: 'logout_all' } });
 export const logout = () => request<{ ok: true }>('profile', { body: { action: 'logout' } });
 export const recoverPassword = (body: { email: string; secretWord: string; newPassword: string }) =>
   request<{ ok: true }>('auth/recover', { body });
@@ -99,7 +110,8 @@ export interface AppSettings {
   premium: PremiumState;
   energy: EnergySettings;
   login: Record<LoginProvider, LoginProviderState>;
-  setup?: { missingMigrations: string[] }; // só para administradores: migrações do banco que faltam
+  emailVerification: { available: boolean; enabled?: boolean; configured?: boolean };
+  setup?: { missingMigrations: string[]; missingEnv?: { name: string; why: string }[] }; // só para administradores: migrações do banco que faltam
 }
 export const fetchSettings = () => request<AppSettings>('settings');
 export const setGameEnabled = (game: string, enabled: boolean) => request<AppSettings>('settings', { body: { game, enabled } });
@@ -107,6 +119,11 @@ export const setAdsEnabled = (enabled: boolean) => request<AppSettings>('setting
 export const setEnergyEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'energy', enabled } });
 export const setLoginEnabled = (provider: LoginProvider, enabled: boolean) =>
   request<AppSettings>('settings', { body: { setting: `login_${provider}`, enabled } });
+export const setEmailVerificationEnabled = (enabled: boolean) =>
+  request<AppSettings>('settings', { body: { setting: 'email_verification', enabled } });
+export const resendVerification = () => request<{ ok: true }>('profile', { body: { action: 'resend_verification' } });
+export interface SuspiciousUser { id: string; username: string; email: string; flagged: number; plays: number; bestRatio: number; lastAt: string }
+export const fetchSuspicious = () => request<{ available: boolean; threshold: number; users: SuspiciousUser[] }>('profile?suspicious=1');
 export const setPremiumEnabled = (enabled: boolean) => request<AppSettings>('settings', { body: { setting: 'premium', enabled } });
 
 // Premium: abre o pagamento / o portal de assinatura do Stripe (devolvem a URL para redirecionar).
@@ -114,6 +131,9 @@ export const startCheckout = () => request<{ url: string }>('billing', { body: {
 export const openBillingPortal = () => request<{ url: string }>('billing', { body: { action: 'portal' } });
 
 export const fetchProgress = () => request<Record<string, Partial<TierProgress>>>('progress');
+// Período já encerrado (back = 1 é o anterior): não muda mais, então o servidor e o navegador guardam por 1 ano.
+export const fetchPastRanking = (game: string, period: RankingPeriod, back: number) =>
+  request<{ period: RankingPeriod; start: string; closed: true; rows: Score[] }>(`ranking?game=${encodeURIComponent(game)}&period=${period}&back=${back}`);
 export const fetchRanking = (game: string) =>
   request<Record<RankingPeriod, Score[]>>(`ranking?game=${encodeURIComponent(game)}`);
 

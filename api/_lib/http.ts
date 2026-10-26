@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { SignJWT, jwtVerify } from 'jose';
 import { HttpError, assertDb, sql } from './db.js';
+import { legalFlags, needsEmailVerification } from './user.js';
 
 export interface Session {
   id: string;
@@ -49,7 +50,9 @@ const readCookie = (req: VercelRequest, name: string) =>
 const EXPIRED = 'Sessão expirada. Entre novamente.';
 
 // Confere o token E o usuário no banco: conta excluída, senha trocada ou perfil rebaixado valem na hora.
-export const requireSession = async (req: VercelRequest): Promise<Session> => {
+// Quem ainda não aceitou os Termos de Uso E a Política de Privacidade (versões vigentes) não usa nada do app:
+// só as rotas do Perfil (que registram o aceite, deixam sair ou excluir a conta) passam { allowPending: true }.
+export const requireSession = async (req: VercelRequest, { allowPending = false } = {}): Promise<Session> => {
   const token = readCookie(req, COOKIE);
   if (!token) throw new HttpError(401, EXPIRED);
   let id: string;
@@ -61,16 +64,28 @@ export const requireSession = async (req: VercelRequest): Promise<Session> => {
   } catch {
     throw new HttpError(401, EXPIRED);
   }
-  const rows = await sql`SELECT username, role, token_version FROM users WHERE id = ${id}`;
+  // to_jsonb: tolera colunas de migrações ainda pendentes (privacy_version, verification_required, email_verified)
+  const rows = await sql`
+    SELECT u.username, u.role, u.token_version, to_jsonb(u) - 'password_hash' - 'secret_hash' AS j
+    FROM users u WHERE u.id = ${id}`;
   const user = rows[0];
   if (!user || user.token_version !== version) throw new HttpError(401, EXPIRED);
+  const row = typeof user.j === 'string' ? JSON.parse(user.j) : user.j;
+  if (!allowPending) {
+    if (!legalFlags(row).accepted) {
+      throw new HttpError(403, 'Aceite os Termos de Uso e a Política de Privacidade para continuar.', false, { code: 'terms_required' });
+    }
+    if (needsEmailVerification(row)) {
+      throw new HttpError(403, 'Confirme seu e-mail para continuar.', false, { code: 'email_unverified' });
+    }
+  }
   return { id, username: user.username, role: user.role, version: user.token_version };
 };
 
 // Sessão opcional (rotas públicas que personalizam a resposta quando há alguém logado).
 export const optionalSession = async (req: VercelRequest): Promise<Session | null> => {
   try {
-    return await requireSession(req);
+    return await requireSession(req, { allowPending: true });
   } catch (err) {
     if (err instanceof HttpError && err.status === 401) return null;
     throw err;
@@ -83,8 +98,18 @@ export const requireAdmin = async (req: VercelRequest): Promise<Session> => {
   return session;
 };
 
+// IP do cliente. Na Vercel, x-vercel-forwarded-for é definido pela própria plataforma (o cliente não consegue forjar).
 export const clientIp = (req: VercelRequest) =>
-  String(req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? 'unknown').split(',')[0].trim();
+  String(req.headers['x-vercel-forwarded-for'] ?? req.headers['x-forwarded-for'] ?? req.socket?.remoteAddress ?? 'unknown').split(',')[0].trim();
+
+// Endereço público do app (URLs de retorno do OAuth e do Stripe). APP_URL manda; sem ela usa só o Host da requisição
+// (x-forwarded-host não é usado: pode ser enviado pelo cliente).
+export const appBaseUrl = (req: VercelRequest) => {
+  const configured = process.env.APP_URL?.trim().replace(/\/+$/, '');
+  if (configured) return configured;
+  const host = String(req.headers.host ?? '');
+  return `${/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https'}://${host}`;
+};
 
 type Handler = (req: VercelRequest, res: VercelResponse) => Promise<unknown>;
 
@@ -105,7 +130,7 @@ export const route = (methods: string[], handler: Handler) =>
       }
       assertDb();
       const body = await handler(req, res);
-      res.setHeader('Cache-Control', 'no-store');
+      if (!res.getHeader('Cache-Control')) res.setHeader('Cache-Control', 'no-store'); // o handler pode definir outro (ex.: ranking de período encerrado)
       res.status(200).json(body);
     } catch (err) {
       if (err instanceof HttpError && (err.status < 500 || err.expose)) {
@@ -125,4 +150,11 @@ export const str = (value: unknown, field: string, min: number, max: number) => 
     throw new HttpError(400, `${field} deve ter entre ${min} e ${max} caracteres.`);
   }
   return trimmed;
+};
+
+// Senha nova: o bcrypt só considera os 72 primeiros BYTES, então senhas maiores (ou com acentos demais) seriam silenciosamente cortadas.
+export const newPassword = (value: unknown, field: string) => {
+  const password = str(value, field, 8, 100);
+  if (Buffer.byteLength(password, 'utf8') > 72) throw new HttpError(400, `${field} deve ter no máximo 72 bytes (cerca de 72 caracteres).`);
+  return password;
 };

@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEq
 import type { VercelRequest } from '@vercel/node';
 import { SignJWT, createLocalJWKSet, importPKCS8, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { HttpError, sql } from './db.js';
+import { appBaseUrl } from './http.js';
 import { isAppSettingEnabled, type AppSetting } from './games.js';
 import { RESERVED_USERNAMES } from '../../lib/legal.js';
 
@@ -29,12 +30,7 @@ export const identitiesTableExists = async () =>
 export const providerAvailable = async (p: Provider) =>
   providerConfigured(p) && (await isAppSettingEnabled(settingKey(p))) && (await identitiesTableExists());
 
-export const baseUrl = (req: VercelRequest) => {
-  const configured = env('APP_URL')?.replace(/\/+$/, '');
-  if (configured) return configured;
-  const host = String(req.headers['x-forwarded-host'] ?? req.headers.host ?? '');
-  return `${/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https'}://${host}`;
-};
+export const baseUrl = appBaseUrl;
 export const redirectUri = (req: VercelRequest, p: Provider) => `${baseUrl(req)}/api/oauth/${p}`;
 
 // ---- estado do fluxo (cookie assinado, sem guardar nada no servidor) ------------------------------------------
@@ -116,7 +112,7 @@ const appleClientSecret = async () => {
 };
 
 const postForm = async (url: string, params: Record<string, string>) => {
-  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString() });
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString(), signal: AbortSignal.timeout(8_000) });
   const data: any = await res.json().catch(() => ({}));
   return { ok: res.ok, status: res.status, data };
 };
@@ -140,7 +136,7 @@ const jwksCache = new Map<Provider, { keys: JWTVerifyGetKey; at: number }>();
 const loadJwks = async (p: Provider, force = false) => {
   const hit = jwksCache.get(p);
   if (hit && !force && Date.now() - hit.at < 3600_000) return hit.keys;
-  const res = await fetch(JWKS_URL[p]);
+  const res = await fetch(JWKS_URL[p], { signal: AbortSignal.timeout(8_000) });
   if (!res.ok) throw new Error('jwks_failed');
   const keys = createLocalJWKSet(await res.json());
   jwksCache.set(p, { keys, at: Date.now() });

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Thinkrplay</string>
+    <string name="title_activity_main">Thinkrplay</string>
+    <string name="package_name">com.thinkrplay.app</string>
+    <string name="custom_url_scheme">com.thinkrplay.app</string>
+</resources>

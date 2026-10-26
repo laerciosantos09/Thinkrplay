@@ -8,21 +8,29 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/check-logic.ts && tsx scripts/check-migrations.mjs && tsx scripts/test-api.mjs && tsx scripts/test-oauth.mjs",
+    "test": "tsx scripts/check-logic.ts && tsx scripts/check-migrations.mjs && node scripts/check-sql.mjs && tsx scripts/test-api.mjs && tsx scripts/test-oauth.mjs && tsx scripts/test-security.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "db:admin": "node scripts/create-admin.mjs",
     "db:admin:sql": "node scripts/create-admin.mjs --sql",
-    "db:schema": "node scripts/build-schema.mjs"
+    "db:schema": "node scripts/build-schema.mjs",
+    "cap:sync": "npm run build && cap sync",
+    "cap:android": "cap open android",
+    "cap:ios": "cap open ios",
+    "cap:assets": "capacitor-assets generate --android --ios"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
     "bcryptjs": "^3.0.3",
-    "express": "^5.2.1",
     "jose": "^6.2.13",
     "react": "^19.2.3",
     "react-dom": "^19.2.3"
   },
   "devDependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/core": "^7.6.9",
+    "@capacitor/ios": "^7.6.9",
     "@electric-sql/pglite": "^0.5.11",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.14.0",

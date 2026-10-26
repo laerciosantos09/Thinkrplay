@@ -28,5 +28,5 @@ export default route(['POST'], async (req) => {
     : play.game === 'hanoi' ? scoreHanoi(tier, level, generateHanoi(mulberry32(play.seed), tier, level).disks, result.actions, result.par!)
     : scoreLights(tier, level, result.actions, result.par!);
 
-  return finishPlay(play, points);
+  return finishPlay(play, points, result.actions);
 });

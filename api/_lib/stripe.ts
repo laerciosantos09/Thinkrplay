@@ -34,6 +34,7 @@ export const stripe = async <T = any>(method: 'GET' | 'POST' | 'DELETE', path: s
       ...(options.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : {}),
     },
     body: options.params ? flatten(options.params).toString() : undefined,
+    signal: AbortSignal.timeout(10_000), // um provedor lento não pode prender a função até o limite da Vercel
   });
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok) {

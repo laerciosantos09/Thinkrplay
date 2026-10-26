@@ -116,7 +116,15 @@ const callback = async (req: VercelRequest, res: VercelResponse, p: Provider) =>
   }
   // Sem identidade conhecida: precisa de e-mail verificado pelo provedor.
   if (!identity.email || !identity.emailVerified) return fail(res, 'unverified_email');
-  const owner = (await sql`SELECT id, token_version, email_verified, password_hash FROM users WHERE lower(email) = ${identity.email}`)[0];
+  const owner = (await sql`SELECT id, token_version, email_verified, password_hash, coalesce((to_jsonb(users)->>'verification_required')::boolean, false) AS verification_required FROM users WHERE lower(email) = ${identity.email}`)[0];
+  if (owner && owner.verification_required && !owner.email_verified && owner.password_hash) {
+    // Cadastro com senha que NUNCA confirmou o e-mail, e agora o dono de verdade prova o e-mail pelo provedor: a conta é dele.
+    // As credenciais criadas antes (senha e palavra secreta, possivelmente de um impostor) são apagadas e as sessões antigas encerradas.
+    const reset = await sql`UPDATE users SET password_hash = NULL, secret_hash = NULL, email_verified = true, token_version = token_version + 1 WHERE id = ${owner.id} RETURNING token_version`;
+    owner.token_version = reset[0].token_version;
+    owner.email_verified = true;
+    owner.password_hash = null;
+  }
   if (owner) {
     // Mesma pessoa, mesma conta: se o e-mail dessa conta já foi verificado por um provedor (ou ela nem tem senha), conecta e entra.
     if (owner.email_verified || !owner.password_hash) {

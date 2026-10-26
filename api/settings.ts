@@ -3,6 +3,7 @@ import { APP_SETTINGS, isAppSettingEnabled, listGames } from './_lib/games.js';
 import { GAME_SLUGS, requireAdmin, requireSession, route } from './_lib/http.js';
 import { premiumState } from './_lib/premium.js';
 import { PROVIDERS, providerConfigured, settingKey } from './_lib/oauth.js';
+import { mailConfigured } from './_lib/mailer.js';
 import { energyState } from './_lib/energy.js';
 import { ENERGY } from '../lib/energy.js';
 
@@ -14,6 +15,21 @@ const MIGRATIONS: Record<string, string> = {
   play_energy: '007_play_energy.sql',
   oauth_identities: '008_oauth_login.sql',
   signup_method: '009_signup_method.sql',
+  privacy_version: '010_privacy_acceptance.sql',
+  email_tokens: '011_email_verification.sql',
+  pace_ratio: '012_play_signals.sql',
+  ranking_totals: '013_ranking_totals.sql',
+};
+
+// Variáveis recomendadas que estão faltando (só o administrador vê o aviso).
+const missingEnv = () => {
+  const out: { name: string; why: string }[] = [];
+  if (!process.env.APP_URL?.trim()) out.push({ name: 'APP_URL', why: 'endereço fixo do site para as URLs de retorno do login social e do pagamento' });
+  if (!process.env.CHALLENGE_SECRET?.trim()) out.push({ name: 'CHALLENGE_SECRET', why: 'segredo próprio dos desafios (hoje usa o JWT_SECRET)' });
+  if (providerConfigured('apple') && !process.env.OAUTH_TOKEN_KEY?.trim()) {
+    out.push({ name: 'OAUTH_TOKEN_KEY', why: 'chave própria para cifrar o token da Apple (trocar o JWT_SECRET sem ela impediria revogar contas Apple)' });
+  }
+  return out;
 };
 
 // GET: qualquer usuário logado vê os jogos habilitados, se os anúncios estão ligados e a situação do Premium.
@@ -47,7 +63,11 @@ export default route(['GET', 'POST'], async (req) => {
     SELECT to_regclass('public.game_settings') IS NOT NULL AS game_settings, to_regclass('public.app_settings') IS NOT NULL AS app_settings,
            to_regclass('public.subscriptions') IS NOT NULL AS subscriptions, to_regclass('public.play_energy') IS NOT NULL AS play_energy,
            to_regclass('public.oauth_identities') IS NOT NULL AS oauth_identities,
-           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'signup_method') AS signup_method`)[0];
+           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'signup_method') AS signup_method,
+           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'privacy_version') AS privacy_version,
+           to_regclass('public.email_tokens') IS NOT NULL AS email_tokens,
+           to_regclass('public.ranking_totals') IS NOT NULL AS ranking_totals,
+           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'plays' AND column_name = 'pace_ratio') AS pace_ratio`)[0];
   const missing = Object.keys(MIGRATIONS).filter((table) => !present[table]).map((table) => MIGRATIONS[table]);
   // Não oferece um plano que não dá para contratar: sem a tabela de assinaturas (006 pendente) o Premium fica indisponível.
   if (!present.subscriptions) premium.available = false;
@@ -58,9 +78,12 @@ export default route(['GET', 'POST'], async (req) => {
     const available = Boolean(present.oauth_identities && present.signup_method) && enabled && providerConfigured(p);
     login[p] = session.role === 'admin' ? { enabled, configured: providerConfigured(p), available } : { available };
   }
+  const evEnabled = await isAppSettingEnabled('email_verification');
+  const evAvailable = Boolean(present.email_tokens) && evEnabled && mailConfigured();
   return {
     login,
-    ...(session.role === 'admin' ? { setup: { missingMigrations: missing } } : {}),
+    emailVerification: session.role === 'admin' ? { enabled: evEnabled, configured: mailConfigured(), available: evAvailable } : { available: evAvailable },
+    ...(session.role === 'admin' ? { setup: { missingMigrations: missing, missingEnv: missingEnv() } } : {}),
     games: await listGames(),
     ads: { enabled: await isAppSettingEnabled('ads') },
     premium,

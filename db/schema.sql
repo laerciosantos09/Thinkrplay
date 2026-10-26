@@ -197,3 +197,77 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified boolean NOT NULL DEFAU
 UPDATE users u SET signup_method = i.provider, email_verified = true
 FROM (SELECT DISTINCT ON (user_id) user_id, provider FROM oauth_identities ORDER BY user_id, created_at) i
 WHERE i.user_id = u.id AND u.password_hash IS NULL AND u.signup_method = 'password';
+
+-- ===== 010_privacy_acceptance.sql =====
+-- 010 · Aceite separado da Política de Privacidade.
+--  - terms_version / terms_accepted_at (da 004) passam a valer só para os TERMOS DE USO
+--  - privacy_version / privacy_accepted_at: aceite da POLÍTICA DE PRIVACIDADE
+-- O aceite é um "flag" por documento: marcado como aceito na versão vigente, não é pedido de novo.
+-- Quem já tinha aceitado o conjunto antes continua aceito nos dois. Pode ser executado várias vezes sem problema.
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_version text;
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS privacy_accepted_at timestamptz;
+
+UPDATE users SET privacy_version = terms_version, privacy_accepted_at = terms_accepted_at
+WHERE privacy_version IS NULL AND terms_version IS NOT NULL;
+
+-- ===== 011_email_verification.sql =====
+-- 011 · Confirmação de e-mail no cadastro (ligável pelo administrador).
+--  - email_tokens: links de confirmação de uso único (guarda só o HASH do token) e com validade
+--  - users.verification_required: true para contas criadas com a confirmação ligada. Só elas ficam barradas até confirmar;
+--    contas antigas não são afetadas quando o administrador liga o recurso
+-- Pode ser executado várias vezes sem problema.
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_required boolean NOT NULL DEFAULT false;
+
+CREATE TABLE IF NOT EXISTS email_tokens (
+  id bigserial PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  token_hash text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS email_tokens_user_idx ON email_tokens (user_id, created_at DESC);
+
+-- ===== 012_play_signals.sql =====
+-- 012 · Sinais para detectar partidas suspeitas (robôs).
+--  - pace_ratio: tempo gasto dividido pelo mínimo plausível para um humano naquela partida (perto de 1 = ritmo de robô)
+-- Só alimenta o painel do administrador; nada é bloqueado automaticamente. Pode ser executado várias vezes.
+
+ALTER TABLE plays ADD COLUMN IF NOT EXISTS pace_ratio real;
+
+CREATE INDEX IF NOT EXISTS plays_pace_idx ON plays (user_id, finished_at DESC) WHERE pace_ratio IS NOT NULL;
+
+-- ===== 013_ranking_totals.sql =====
+-- 013 · Totais do ranking salvos em tabela.
+--  - ranking_totals: pontos, desafios e último horário por usuário, jogo (ou 'all' = geral) e período (dia/semana/mês/ano,
+--    no fuso America/Sao_Paulo). É atualizada a cada pontuação nova e lida por índice, sem somar a tabela scores a cada consulta.
+--  - scores continua sendo a fonte da verdade: esta migração (re)calcula tudo a partir dela e pode ser executada de novo
+--    a qualquer momento para reparar os totais.
+-- Pode ser executado várias vezes sem problema.
+
+CREATE TABLE IF NOT EXISTS ranking_totals (
+  user_id uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+  game text NOT NULL,
+  period text NOT NULL CHECK (period IN ('day', 'week', 'month', 'year')),
+  period_start date NOT NULL,
+  points integer NOT NULL,
+  solved integer NOT NULL,
+  last_at timestamptz NOT NULL,
+  PRIMARY KEY (user_id, game, period, period_start)
+);
+
+CREATE INDEX IF NOT EXISTS ranking_totals_rank_idx ON ranking_totals (game, period, period_start, points DESC, last_at ASC, user_id);
+
+INSERT INTO ranking_totals (user_id, game, period, period_start, points, solved, last_at)
+SELECT s.user_id, g.game, p.period, date_trunc(p.period, s.created_at AT TIME ZONE 'America/Sao_Paulo')::date,
+       SUM(s.points)::int, COUNT(*)::int, MAX(s.created_at)
+FROM scores s
+CROSS JOIN (VALUES ('day'), ('week'), ('month'), ('year')) AS p(period)
+CROSS JOIN LATERAL (VALUES (s.game), ('all')) AS g(game)
+GROUP BY s.user_id, g.game, p.period, date_trunc(p.period, s.created_at AT TIME ZONE 'America/Sao_Paulo')::date
+ON CONFLICT (user_id, game, period, period_start) DO UPDATE
+  SET points = EXCLUDED.points, solved = EXCLUDED.solved, last_at = EXCLUDED.last_at;

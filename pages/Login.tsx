@@ -3,6 +3,7 @@ import { LoginProvider, User } from '../types';
 import { APP_TAGLINE } from '../config';
 import Logo from '../components/Logo';
 import SocialButtons from '../components/SocialButtons';
+import { isNativeApp } from '../lib/platform';
 import { fetchProviders, login, recoverPassword, register } from '../services/api';
 
 type Mode = 'login' | 'register' | 'recover';
@@ -20,6 +21,7 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
   const [mode, setMode] = useState<Mode>('login');
   const [form, setForm] = useState({ username: '', email: '', password: '', secretWord: '', newPassword: '' });
   const [acceptTerms, setAcceptTerms] = useState(false);
+  const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [error, setError] = useState<string | null>(initialError ?? null);
   const [social, setSocial] = useState<LoginProvider[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
@@ -27,6 +29,7 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
 
   // Botões do Google/Apple só aparecem se o administrador ligou e o servidor está configurado.
   useEffect(() => {
+    if (isNativeApp) return; // login social não funciona no WebView do app nativo
     fetchProviders()
       .then((r) => setSocial((['google', 'apple'] as LoginProvider[]).filter((p) => r[p])))
       .catch(() => {});
@@ -52,7 +55,7 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
         switchMode('login');
         setNotice('Senha redefinida. Entre com a nova senha.');
       } else if (mode === 'register') {
-        onLogin((await register({ ...form, acceptTerms })).user);
+        onLogin((await register({ ...form, acceptTerms, acceptPrivacy })).user);
       } else {
         onLogin((await login(form.email, form.password, Boolean(pendingLink))).user);
       }
@@ -103,8 +106,8 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
               value={form.password} onChange={set('password')} placeholder="••••••••" />
           )}
           {mode !== 'login' && (
-            <Field label="Palavra Secreta (recuperação)" type="text" autoComplete="off" minLength={4}
-              value={form.secretWord} onChange={set('secretWord')} placeholder="Ex: Nome da sua escola" />
+            <Field label="Palavra Secreta (recuperação)" type="text" autoComplete="off" minLength={mode === 'register' ? 8 : undefined}
+              value={form.secretWord} onChange={set('secretWord')} placeholder="Ex: nome da sua primeira escola" />
           )}
           {mode === 'recover' && (
             <Field label="Nova senha" type="password" minLength={8} autoComplete="new-password"
@@ -112,13 +115,16 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
           )}
 
           {mode === 'register' && (
-            <label className="flex items-start gap-3 text-sm text-slate-600 cursor-pointer">
-              <input type="checkbox" required checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} className="mt-0.5 w-5 h-5 accent-brand-600 shrink-0" />
-              <span>
-                Li e aceito os <a href="/termos" target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Termos de Uso</a> e
-                a <a href="/privacidade" target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Política de Privacidade</a>.
-              </span>
-            </label>
+            <div className="space-y-2">
+              <label className="flex items-start gap-3 text-sm text-slate-600 cursor-pointer">
+                <input type="checkbox" required checked={acceptTerms} onChange={(e) => setAcceptTerms(e.target.checked)} className="mt-0.5 w-5 h-5 accent-brand-600 shrink-0" />
+                <span>Li e aceito os <a href="/termos" target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Termos de Uso</a>.</span>
+              </label>
+              <label className="flex items-start gap-3 text-sm text-slate-600 cursor-pointer">
+                <input type="checkbox" required checked={acceptPrivacy} onChange={(e) => setAcceptPrivacy(e.target.checked)} className="mt-0.5 w-5 h-5 accent-brand-600 shrink-0" />
+                <span>Li e aceito a <a href="/privacidade" target="_blank" rel="noopener" className="font-bold text-brand-700 underline">Política de Privacidade</a>.</span>
+              </label>
+            </div>
           )}
 
           {mode === 'login' && (
@@ -146,7 +152,7 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
               <span className="flex-1 h-px bg-slate-100" />ou<span className="flex-1 h-px bg-slate-100" />
             </div>
             <SocialButtons providers={social} verb={mode === 'register' ? 'Cadastrar com' : 'Entrar com'} />
-            {mode === 'register' && <p className="mt-3 text-center text-xs text-slate-400">Ao continuar, você aceita os Termos de Uso e a Política de Privacidade.</p>}
+            {mode === 'register' && <p className="mt-3 text-center text-xs text-slate-400">No primeiro acesso você precisará aceitar os Termos de Uso e a Política de Privacidade.</p>}
           </div>
         )}
 

@@ -77,13 +77,13 @@ const solveMemory = async (tier, challenge) => {
 
 // --- auth
 assert.equal(await code('profile', { method: 'GET' }), 401);
-const reg = await call('auth/register', { body: { username: 'ana', email: 'Ana@x.com', password: 'senha-forte-1', secretWord: 'escola', acceptTerms: true } });
+const reg = await call('auth/register', { body: { username: 'ana', email: 'Ana@x.com', password: 'senha-forte-1', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } });
 assert.equal(reg.statusCode, 200);
 assert.match(reg.headers['Set-Cookie'], /HttpOnly; SameSite=Strict/);
 assert.equal(reg.headers['Set-Cookie'].includes('Secure'), true);
-assert.equal(await code('auth/register', { body: { username: 'ANA', email: 'b@x.com', password: 'senha-forte-1', secretWord: 'escola', acceptTerms: true } }), 409);
+assert.equal(await code('auth/register', { body: { username: 'ANA', email: 'b@x.com', password: 'senha-forte-1', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } }), 409);
 assert.equal((await ok('profile', { method: 'GET' })).user.username, 'ana');
-assert.equal(await code('auth/register', { body: { username: 'bob', email: 'bob@x.com', password: 'curta', secretWord: 'escola', acceptTerms: true } }), 400);
+assert.equal(await code('auth/register', { body: { username: 'bob', email: 'bob@x.com', password: 'curta', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } }), 400);
 assert.equal(await code('profile', { method: 'GET', headers: { cookie: 'session=forjado' } }), 401);
 assert.equal(await code('auth/login', { body: { email: 'a@x.com', password: 'x' }, headers: { origin: 'https://evil.com' } }), 403);
 assert.equal(await code('auth/login', { body: { email: 'a@x.com', password: 'x' }, headers: { 'content-type': 'text/plain' } }), 415);
@@ -94,7 +94,7 @@ assert.equal(await code('auth/login', { body: { email: 'ana@x.com', password: 's
 assert.equal(await code('auth/recover', { body: { email: 'ana@x.com', secretWord: 'chute', newPassword: 'nova-senha-1' } }), 429);
 await pg.query('DELETE FROM auth_attempts');
 assert.equal(await code('auth/recover', { body: { email: 'ana@x.com', secretWord: 'chute', newPassword: 'nova-senha-1' } }), 401);
-await ok('auth/recover', { body: { email: 'ana@x.com', secretWord: 'ESCOLA', newPassword: 'nova-senha-1' } });
+await ok('auth/recover', { body: { email: 'ana@x.com', secretWord: 'ESCOLA-ANTIGA', newPassword: 'nova-senha-1' } });
 await ok('auth/login', { body: { email: 'ana@x.com', password: 'nova-senha-1' } });
 
 // --- validações de entrada e bloqueios
@@ -225,9 +225,59 @@ assert.deepEqual(last.code, sec2); assert.equal(last.won, false);
 assert.equal(await code('play/guess', { body: { playId: p.playId, guess: sec2 } }), 409);
 assert.equal((await progressOf()).mastermind.easy, 1, 'perder não avança');
 
+// --- corrida: requisições paralelas não podem gastar menos tentativas do que fizeram
+p = await ok('play/start', { body: { game: 'mastermind', tier: 'easy', challenge: 2 } });
+const sec3 = generateCode(mulberry32(await seedOf(p.playId)), 'easy', 2);
+const burst = await Promise.all(Array.from({ length: cfg.attempts * 4 }, () => call('play/guess', { body: { playId: p.playId, guess: sec3.map((c) => (c + 1) % cfg.colors) } })));
+assert.ok(burst.filter((r) => r.statusCode === 200).length <= cfg.attempts, 'no máximo as tentativas permitidas recebem dica');
+assert.ok(burst.filter((r) => r.statusCode === 409).length >= cfg.attempts * 3, 'o excedente é recusado sem dica');
+assert.equal((await pg.query(`SELECT (state->>'guesses')::int g FROM plays WHERE id=$1`, [p.playId])).rows[0].g, burst.filter((r) => r.statusCode === 200).length, 'cada dica dada foi contada como tentativa');
+p = await ok('play/start', { body: { game: 'sequence', tier: 'easy', challenge: 2 } });
+const sseed2 = await seedOf(p.playId);
+const puz0 = generateSequence(mulberry32(sequenceSeed(sseed2, 0)), 'easy', 2);
+const wrong = puz0.options.find((o) => o !== puz0.answer);
+await Promise.all(Array.from({ length: 6 }, () => ok('play/guess', { body: { playId: p.playId, value: wrong } })));
+assert.equal((await pg.query(`SELECT (state->>'mistakes')::int m FROM plays WHERE id=$1`, [p.playId])).rows[0].m, 6, 'erros em paralelo são todos contados');
+const okRound = await Promise.all([1, 2, 3].map(() => call('play/guess', { body: { playId: p.playId, value: puz0.answer } })));
+assert.equal(okRound.filter((r) => r.statusCode === 200).length, 1, 'a mesma rodada só avança uma vez');
+assert.equal((await pg.query(`SELECT (state->>'round')::int r FROM plays WHERE id=$1`, [p.playId])).rows[0].r, 1);
+
+// --- cadastro: limite por IP e senha acima de 72 bytes (o bcrypt cortaria o resto)
+const cadastro = (over) => call('auth/register', { headers: { 'x-forwarded-for': '7.7.7.7' }, body: { username: 'lim', email: 'lim@x.com', password: 'senha-forte-9', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true, ...over } });
+assert.equal((await cadastro({ password: 'a'.repeat(73) })).statusCode, 400, 'senha de 73 bytes');
+assert.equal((await cadastro({ password: 'é'.repeat(37) })).statusCode, 400, '74 bytes em 37 caracteres');
+for (let i = 0; i < 20; i++) await pg.query(`INSERT INTO auth_attempts (email, ip) VALUES ('register', 'register:7.7.7.7')`);
+assert.equal((await cadastro({})).statusCode, 429, 'muitos cadastros do mesmo IP');
+assert.equal((await call('auth/login', { headers: { 'x-forwarded-for': '7.7.7.7' }, body: { email: 'ana@x.com', password: 'errada-123' } })).statusCode, 401, 'cadastros não bloqueiam o login do mesmo IP');
+await pg.query(`DELETE FROM auth_attempts`);
+
+// --- palavra secreta e sair de todos os aparelhos
+assert.equal((await call('auth/register', { body: { username: 'fraca', email: 'fraca@x.com', password: 'senha-forte-9', secretWord: 'curta', acceptTerms: true, acceptPrivacy: true } })).statusCode, 400, 'palavra secreta com menos de 8 caracteres');
+assert.equal(await code('profile', { body: { action: 'secret', currentPassword: 'errada-123', secretWord: 'palavra-nova-1' } }), 403, 'exige a senha atual');
+assert.equal(await code('profile', { body: { action: 'secret', currentPassword: 'nova-senha-1', secretWord: 'curta' } }), 400);
+await ok('profile', { body: { action: 'secret', currentPassword: 'nova-senha-1', secretWord: 'Palavra-Nova-1' } });
+const anaDev1 = cookie;
+await ok('auth/login', { body: { email: 'ana@x.com', password: 'nova-senha-1' } }); const anaDev2 = cookie;
+cookie = anaDev1; await ok('profile', { body: { action: 'logout_all' } });
+cookie = anaDev2; assert.equal(await code('profile', { method: 'GET' }), 401, 'sair em todos os aparelhos derruba as outras sessões');
+cookie = ''; await ok('auth/login', { body: { email: 'ana@x.com', password: 'nova-senha-1' } });
+await pg.query(`DELETE FROM auth_attempts`);
+// recuperação: erros não trancam o login e há teto diário
+for (let i = 0; i < 8; i++) assert.equal(await code('auth/recover', { headers: { 'x-forwarded-for': `9.9.9.${i}` }, body: { email: 'ana@x.com', secretWord: 'errada-123', newPassword: 'nova-senha-9' } }), 401);
+assert.equal(await code('auth/login', { headers: { 'x-forwarded-for': '8.8.8.8' }, body: { email: 'ana@x.com', password: 'nova-senha-1' } }), 200, 'erros de recuperação não trancam o login');
+for (let i = 8; i < 20; i++) await pg.query(`INSERT INTO auth_attempts (email, ip, at) VALUES ('recover:ana@x.com', $1, now() - interval '3 hours')`, [`7.7.1.${i}`]);
+assert.equal(await code('auth/recover', { headers: { 'x-forwarded-for': '6.6.6.6' }, body: { email: 'ana@x.com', secretWord: 'palavra-nova-1', newPassword: 'nova-senha-9' } }), 429, 'teto diário da palavra secreta, mesmo com a palavra certa');
+// login: poucos erros de um desconhecido não trancam a conta (o limite por e-mail é maior que o por IP)
+await pg.query(`DELETE FROM auth_attempts`);
+for (let i = 0; i < 9; i++) await code('auth/login', { headers: { 'x-forwarded-for': `5.5.5.${i}` }, body: { email: 'ana@x.com', password: 'errada-123' } });
+assert.equal(await code('auth/login', { headers: { 'x-forwarded-for': '4.4.4.4' }, body: { email: 'ana@x.com', password: 'nova-senha-1' } }), 200, 'a dona entra mesmo com erros de outros IPs');
+for (let i = 0; i < 8; i++) await code('auth/login', { headers: { 'x-forwarded-for': '3.3.3.3' }, body: { email: 'naoexiste@x.com', password: 'x' } });
+assert.equal(await code('auth/login', { headers: { 'x-forwarded-for': '3.3.3.3' }, body: { email: 'ana@x.com', password: 'nova-senha-1' } }), 429, 'o IP que errou muito fica bloqueado');
+await pg.query(`DELETE FROM auth_attempts`);
+
 // --- partida de outro usuário / ranking / progresso por tier
 const anaCookie = cookie; cookie = '';
-await ok('auth/register', { body: { username: 'bia', email: 'bia@x.com', password: 'senha-forte-2', secretWord: 'escola', acceptTerms: true } });
+await ok('auth/register', { body: { username: 'bia', email: 'bia@x.com', password: 'senha-forte-2', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } });
 assert.equal(await code('play/guess', { body: { playId: p.playId, guess: sec2 } }), 404);
 assert.deepEqual(await progressOf(), {}, 'outro usuário começa do zero');
 assert.equal((await start('memory', 'medium', 1)).statusCode, 403, 'progresso é por usuário');
@@ -244,7 +294,7 @@ const saved = process.env.JWT_SECRET;
 process.env.JWT_SECRET = 'curto';
 const leaked = await call('profile', { method: 'GET', headers: { cookie: 'session=x' } });
 assert.equal(leaked.statusCode, 401);
-const cfgErr = await call('auth/register', { body: { username: 'zed', email: 'zed@x.com', password: 'senha-forte-3', secretWord: 'escola', acceptTerms: true } });
+const cfgErr = await call('auth/register', { body: { username: 'zed', email: 'zed@x.com', password: 'senha-forte-3', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true } });
 assert.equal(cfgErr.statusCode, 500);
 assert.ok(!/JWT|SECRET|segredo/i.test(JSON.stringify(cfgErr.body)), `vazou: ${JSON.stringify(cfgErr.body)}`);
 process.env.JWT_SECRET = saved;
@@ -271,6 +321,8 @@ assert.equal((await pg.query(`SELECT count(*)::int n FROM users WHERE lower(emai
 await pg.query(`DELETE FROM auth_attempts`);
 assert.equal(await code('auth/login', { body: { email: 'admin@teste.com', password: 'Senha-Teste-1@' } }), 401);
 await ok('auth/login', { body: { email: 'admin@teste.com', password: 'Outra-Senha-2@' } });
+assert.equal(await code('settings', { method: 'GET' }), 403, 'admin criado por script também precisa aceitar os documentos');
+await ok('profile', { body: { action: 'accept_terms', terms: true, privacy: true } });
 // usuário comum nunca vira admin pelo cadastro
 assert.equal((await pg.query(`SELECT role FROM users WHERE username='ana'`)).rows[0].role, 'user');
 
@@ -308,10 +360,12 @@ cookie = adminCookie;
 assert.equal(await code('settings', { body: { game: 'memory', enabled: false } }), 403, 'ex-admin perde o acesso imediatamente');
 
 // --- Termos no cadastro e nomes reservados
-const reg2 = (over) => ({ body: { username: 'novo', email: 'novo@x.com', password: 'senha-forte-9', secretWord: 'escola', acceptTerms: true, ...over } });
+const reg2 = (over) => ({ body: { username: 'novo', email: 'novo@x.com', password: 'senha-forte-9', secretWord: 'escola-antiga', acceptTerms: true, acceptPrivacy: true, ...over } });
 cookie = '';
 assert.equal(await code('auth/register', reg2({ acceptTerms: undefined })), 400, 'sem aceitar os termos');
 assert.equal(await code('auth/register', reg2({ acceptTerms: 'true' })), 400, 'aceite precisa ser booleano true');
+assert.equal(await code('auth/register', reg2({ acceptPrivacy: undefined })), 400, 'sem aceitar a privacidade');
+assert.equal(await code('auth/register', reg2({ acceptPrivacy: false })), 400, 'privacidade recusada');
 assert.equal(await code('auth/register', reg2({ username: 'Admin' })), 400, 'nome reservado');
 assert.equal(await code('auth/register', reg2({ username: 'x@y.com' })), 400, 'username não pode ser e-mail');
 
@@ -348,15 +402,51 @@ await ok('auth/login', { body: { email: 'carla@x.com', password: 'nova-senha-4' 
 const carla = cookie;
 assert.ok(!(await pg.query(`SELECT password_hash FROM users WHERE username='carla.m'`)).rows[0].password_hash.includes('nova-senha'), 'senha só em hash');
 // redefinir pela palavra secreta também derruba as sessões abertas
-await ok('auth/recover', { body: { email: 'carla@x.com', secretWord: 'escola', newPassword: 'recuperada-4' } });
+await ok('auth/recover', { body: { email: 'carla@x.com', secretWord: 'escola-antiga', newPassword: 'recuperada-4' } });
 assert.equal(await code('profile', { method: 'GET' }), 401, 'recuperar senha encerra sessões');
 await ok('auth/login', { body: { email: 'carla@x.com', password: 'recuperada-4' } });
 
-// --- Aceite dos termos (usuários antigos ou nova versão)
-await pg.query(`UPDATE users SET terms_version = NULL, terms_accepted_at = NULL WHERE username = 'carla.m'`);
-assert.equal((await ok('profile', { method: 'GET' })).user.needsTerms, true);
-assert.equal((await ok('profile', { body: { action: 'accept_terms' } })).user.needsTerms, false);
-assert.ok((await pg.query(`SELECT terms_accepted_at FROM users WHERE username='carla.m'`)).rows[0].terms_accepted_at, 'registra quando aceitou');
+// --- Aceite dos termos e da privacidade: um flag por documento; sem os dois o servidor barra tudo
+const flags = async () => (await ok('profile', { method: 'GET' })).user;
+let u0 = await flags();
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted, u0.needsTerms], [true, true, false], 'cadastro já aceita os dois');
+await pg.query(`UPDATE users SET terms_version = NULL, terms_accepted_at = NULL, privacy_version = NULL, privacy_accepted_at = NULL WHERE username = 'carla.m'`);
+u0 = await flags();
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted, u0.needsTerms], [false, false, true]);
+for (const [name, opts] of [['progress', { method: 'GET' }], ['settings', { method: 'GET' }], ['billing', { body: { action: 'checkout' } }], ['play/start', { body: { game: 'sudoku', tier: 'easy', challenge: 1 } }]]) {
+  const r = await call(name, opts);
+  assert.equal(r.statusCode, 403, `${name} bloqueado sem aceite`);
+  assert.equal(r.body.code, 'terms_required');
+}
+assert.equal(await code('profile', { body: { action: 'accept_terms' } }), 400, 'precisa marcar algo');
+assert.equal(await code('profile', { body: { action: 'accept_terms', terms: 'true' } }), 400, 'só true explícito');
+// só os Termos: continua bloqueado (falta a Política)
+u0 = (await ok('profile', { body: { action: 'accept_terms', terms: true } })).user;
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted, u0.needsTerms], [true, false, true], 'um flag não libera');
+assert.equal(await code('progress', { method: 'GET' }), 403, 'ainda bloqueado');
+const t1 = (await pg.query(`SELECT terms_accepted_at FROM users WHERE username='carla.m'`)).rows[0].terms_accepted_at;
+u0 = (await ok('profile', { body: { action: 'accept_terms', terms: true, privacy: true } })).user;
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted, u0.needsTerms], [true, true, false], 'com os dois libera');
+assert.equal(String((await pg.query(`SELECT terms_accepted_at FROM users WHERE username='carla.m'`)).rows[0].terms_accepted_at), String(t1), 'aceite já dado não é regravado');
+assert.equal(await code('progress', { method: 'GET' }), 200, 'liberado');
+// nova versão de UM documento pede só aquele
+await pg.query(`UPDATE users SET privacy_version = 'antiga' WHERE username = 'carla.m'`);
+u0 = await flags();
+assert.deepEqual([u0.termsAccepted, u0.privacyAccepted], [true, false]);
+assert.equal(await code('progress', { method: 'GET' }), 403);
+await ok('profile', { body: { action: 'accept_terms', privacy: true } });
+assert.equal(await code('progress', { method: 'GET' }), 200);
+assert.ok((await pg.query(`SELECT privacy_accepted_at FROM users WHERE username='carla.m'`)).rows[0].privacy_accepted_at, 'registra quando aceitou');
+// quem não aceitou ainda pode sair e excluir a conta
+await pg.query(`UPDATE users SET terms_version = NULL WHERE username = 'carla.m'`);
+assert.equal(await code('profile', { body: { action: 'logout' } }), 200);
+await ok('auth/login', { body: { email: 'carla@x.com', password: 'recuperada-4' } });
+await ok('profile', { body: { action: 'accept_terms', terms: true, privacy: true } });
+
+// --- sinal de ritmo: toda partida concluída guarda tempo / mínimo humano (alimenta o painel de suspeitos)
+const paces = (await pg.query(`SELECT pace_ratio FROM plays WHERE finished_at IS NOT NULL AND points > 0`)).rows.map((r) => r.pace_ratio);
+assert.ok(paces.length > 0 && paces.every((x) => x === null || x >= 1), 'ritmo registrado e nunca abaixo do mínimo humano');
+assert.ok(paces.some((x) => x !== null), 'há partidas com ritmo registrado');
 
 // --- Rankings: geral (all) e por jogo, posição do próprio usuário e atualização a cada desafio
 const fakeHash = '$2b$11$' + 'x'.repeat(53);
@@ -364,6 +454,19 @@ for (let i = 1; i <= 11; i++) {
   const u = (await pg.query(`INSERT INTO users (username,email,password_hash,secret_hash) VALUES ($1,$2,$3,$3) RETURNING id`, [`rk${i}`, `rk${i}@x.com`, fakeHash])).rows[0].id;
   await pg.query(`INSERT INTO scores (user_id, game, tier, points, level) VALUES ($1,'sudoku','easy',$2,1), ($1,'hanoi','easy',$2,1)`, [u, 20000 + i * 10]);
 }
+// ranking_totals é derivada de scores: aqui os scores são inseridos direto, então recalcula (a migração 013 faz isso e é repetível)
+const rebuildTotals = async () => { for (const st of readFileSync(path.join(root, 'db/migrations/013_ranking_totals.sql'), 'utf8').split(/;\s*\n/).map((x) => x.trim()).filter((x) => /^INSERT/i.test(x))) await pg.query(st); };
+await rebuildTotals();
+// a tabela salva tem que ser IGUAL à soma recalculada de scores (provas de que a atualização incremental não erra nem duplica)
+const totalsVsScores = async (label) => {
+  const saved = (await pg.query(`SELECT user_id, game, period, period_start::text d, points, solved FROM ranking_totals ORDER BY 1,2,3,4`)).rows;
+  const live = (await pg.query(`
+    SELECT s.user_id, g.game, p.period, date_trunc(p.period, s.created_at AT TIME ZONE 'America/Sao_Paulo')::date::text d, SUM(s.points)::int points, COUNT(*)::int solved
+    FROM scores s CROSS JOIN (VALUES ('day'),('week'),('month'),('year')) AS p(period) CROSS JOIN LATERAL (VALUES (s.game),('all')) AS g(game)
+    GROUP BY 1,2,3,4 ORDER BY 1,2,3,4`)).rows;
+  assert.deepEqual(saved, live, `ranking_totals == soma de scores (${label})`);
+};
+await totalsVsScores('depois da carga');
 cookie = anaCookie;
 const allBefore = await ok('ranking', { method: 'GET', query: { game: 'all' } });
 assert.equal(allBefore.daily.filter((r) => !r.isMe).length, 10, 'top 10');
@@ -374,13 +477,15 @@ assert.ok(meRow && meRow.username === 'ana' && meRow.position > 10, 'a posição
 assert.equal(allBefore.yearly.find((r) => r.isMe).position, meRow.position);
 const anaSudoku = await ok('ranking', { method: 'GET', query: { game: 'sudoku' } });
 assert.ok(anaSudoku.daily.find((r) => r.isMe).position > 10);
-cookie = ''; // sem login: só o top, sem linha do usuário
-const anon = await ok('ranking', { method: 'GET', query: { game: 'all' } });
-assert.equal(anon.daily.length, 10); assert.ok(anon.daily.every((r) => !r.isMe));
+cookie = ''; // o ranking mostra nomes e pontuações: exige login (não é público)
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'all' } }), 401, 'ranking não é público');
+cookie = 'session=forjado'; assert.equal(await code('ranking', { method: 'GET', query: { game: 'all' } }), 401);
+cookie = anaCookie;
 assert.equal(await code('ranking', { method: 'GET', query: { game: 'xadrez' } }), 400);
 // concluir um desafio atualiza o ranking na hora (geral e do jogo), sem nenhum cache
 cookie = anaCookie;
 const hardNext = await solveMemory('hard', 2);
+await totalsVsScores('depois de concluir um desafio');
 const allAfter = await ok('ranking', { method: 'GET', query: { game: 'all' } });
 const meAfter = allAfter.daily.find((r) => r.isMe);
 assert.equal(meAfter.score, meRow.score + hardNext.points, 'ranking geral somou os pontos do desafio');
@@ -391,6 +496,7 @@ assert.equal(memAfter.solved, 32);
 assert.ok(meAfter.score > memAfter.score);
 // username novo aparece no ranking
 await pg.query(`INSERT INTO scores (user_id, game, tier, points, level) SELECT id, 'lights', 'easy', 99999, 1 FROM users WHERE username = 'carla.m'`);
+await rebuildTotals();
 assert.equal((await ok('ranking', { method: 'GET', query: { game: 'all' } })).daily[0].username, 'carla.m');
 
 // --- Excluir conta: exige senha e confirmação, apaga tudo e libera o e-mail
@@ -408,6 +514,7 @@ assert.match(delRes.headers['Set-Cookie'], /Max-Age=0/, 'cookie de sessão limpo
 for (const table of ['users WHERE id', 'scores WHERE user_id', 'plays WHERE user_id', 'tier_progress WHERE user_id']) {
   assert.equal((await pg.query(`SELECT count(*)::int n FROM ${table} = $1`, [carlaId])).rows[0].n, 0, `${table} apagado`);
 }
+cookie = anaCookie;
 assert.equal((await ok('ranking', { method: 'GET', query: { game: 'all' } })).daily.some((r) => r.username === 'carla.m'), false, 'sai do ranking');
 cookie = carla; assert.equal(await code('profile', { method: 'GET' }), 401, 'sessão da conta excluída não vale');
 cookie = ''; assert.equal(await code('auth/login', { body: { email: 'carla@x.com', password: 'recuperada-4' } }), 401);
@@ -484,6 +591,7 @@ const pamId = (await pg.query(`SELECT id FROM users WHERE username='pam'`)).rows
 const adminC = anaCookie; // ana é admin neste ponto
 await pg.query(`UPDATE users SET role='admin' WHERE username='ana'`);
 await pg.query(`INSERT INTO scores (user_id, game, tier, points, level) VALUES ($1,'sudoku','easy',100,1)`, [pamId]);
+await rebuildTotals();
 
 // desligado por padrão: ninguém vê oferta e o checkout é recusado
 cookie = pamCookie;
@@ -713,6 +821,61 @@ assert.deepEqual([setup.ads.enabled, setup.energy.enabled], [false, false]);
 cookie = gilCookie; assert.equal((await startSudoku()).statusCode, 200, 'jogar continua funcionando sem a tabela de configurações');
 await pg.query('ALTER TABLE app_settings_off RENAME TO app_settings');
 cookie = adminC; assert.deepEqual((await ok('settings', { method: 'GET' })).setup.missingMigrations, [], 'restaurado');
+
+// 010 pendente: sem a coluna de privacidade o aceite único continua valendo (ninguém fica trancado para fora)
+await pg.query('ALTER TABLE users RENAME COLUMN privacy_version TO privacy_off');
+cookie = adminC;
+setup = await ok('settings', { method: 'GET' });
+assert.deepEqual(setup.setup.missingMigrations, ['010_privacy_acceptance.sql']);
+assert.equal(await code('progress', { method: 'GET' }), 200, 'aceito nos termos = liberado sem a 010');
+assert.equal((await ok('profile', { method: 'GET' })).user.privacyAccepted, true);
+await pg.query('ALTER TABLE users RENAME COLUMN privacy_off TO privacy_version');
+
+// 012 pendente: terminar partida continua funcionando sem a coluna do ritmo
+await pg.query('ALTER TABLE plays RENAME COLUMN pace_ratio TO pace_off');
+cookie = anaCookie;
+assert.equal((await solveMemory('hard', 3).catch((e) => ({ err: e }))).err, undefined, 'partida concluída sem a coluna pace_ratio');
+await pg.query('ALTER TABLE plays RENAME COLUMN pace_off TO pace_ratio');
+
+// --- rankings de períodos encerrados: leitura da tabela + cache de 1 ano
+cookie = adminC;
+const vid = (await pg.query(`INSERT INTO users (username,email,password_hash,secret_hash) VALUES ('velho1','velho1@x.com',$1,$1) RETURNING id`, [fakeHash])).rows[0].id;
+await pg.query(`INSERT INTO scores (user_id, game, tier, points, level, created_at) VALUES ($1,'sudoku','easy',777,1, (date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') - interval '12 hours') AT TIME ZONE 'America/Sao_Paulo')`, [vid]);
+await rebuildTotals();
+const closed = await call('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '1' } });
+assert.equal(closed.statusCode, 200);
+assert.equal(closed.headers['Cache-Control'], 'private, max-age=31536000, immutable', 'período encerrado: cache de 1 ano');
+assert.equal(closed.body.closed, true);
+assert.deepEqual(closed.body.rows.map((r) => [r.position, r.username, r.score]), [[1, 'velho1', 777]]);
+assert.ok(closed.body.rows.every((r) => r.isMe === false && r.premium === false), 'sem dados pessoais (a resposta pode ficar em cache)');
+await pg.query(`DELETE FROM ranking_totals`); // prova do cache do servidor: a segunda leitura não depende mais do banco
+const closedAgain = await call('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '1' } });
+assert.deepEqual(closedAgain.body, closed.body, 'servido do cache');
+cookie = anaCookie;
+assert.deepEqual((await call('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '1' } })).body, closed.body, 'o mesmo cache serve qualquer usuário');
+assert.equal((await call('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '2' } })).body.rows.length, 0, 'dia anterior sem pontuação');
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '0' } }), 400, 'back=0 é o período atual (use a rota sem period)');
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '401' } }), 400);
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'hourly', back: '1' } }), 400);
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: "1'; DROP TABLE users;--" } }), 400);
+cookie = '';
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '1' } }), 401, 'também exige login');
+// o ranking em andamento nunca é cacheado
+cookie = anaCookie;
+assert.equal((await call('ranking', { method: 'GET', query: { game: 'all' } })).headers['Cache-Control'], 'no-store');
+await rebuildTotals();
+
+// 013 pendente: ranking e partidas seguem funcionando, somando direto de scores
+const withTable = await ok('ranking', { method: 'GET', query: { game: 'all' } });
+await pg.query('ALTER TABLE ranking_totals RENAME TO ranking_totals_off');
+assert.deepEqual(await ok('ranking', { method: 'GET', query: { game: 'all' } }), withTable, 'mesmo resultado sem a tabela');
+cookie = adminC; setup = await ok('settings', { method: 'GET' });
+assert.ok(setup.setup.missingMigrations.includes('013_ranking_totals.sql'));
+cookie = anaCookie;
+assert.equal((await solveMemory('hard', 3).catch((e) => ({ err: e }))).err, undefined, 'concluir desafio sem a tabela de totais');
+await pg.query('ALTER TABLE ranking_totals_off RENAME TO ranking_totals');
+await rebuildTotals();
+await totalsVsScores('reparado pela migração');
 
 console.log('API OK');
 process.exit(0);

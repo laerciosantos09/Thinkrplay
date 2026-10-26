@@ -1,12 +1,14 @@
 import bcrypt from 'bcryptjs';
 import { HttpError, sql } from './_lib/db.js';
-import { clientIp, endSession, requireSession, route, startSession, str } from './_lib/http.js';
+import { clientIp, endSession, newPassword, requireSession, route, startSession, str } from './_lib/http.js';
 import { assertNotLocked, recordFailure } from './_lib/limit.js';
 import { publicUser } from './_lib/user.js';
 import { ACTIVE_STATUSES, getSubscription } from './_lib/premium.js';
 import { stripe, stripeConfigured } from './_lib/stripe.js';
+import { throttle } from './_lib/limit.js';
+import { sendVerification, verificationAvailable } from './_lib/verification.js';
 import { identitiesTableExists, revokeApple, isProvider } from './_lib/oauth.js';
-import { LEGAL_VERSION, RESERVED_USERNAMES, USERNAME_PATTERN } from '../lib/legal.js';
+import { PRIVACY_VERSION, TERMS_VERSION, RESERVED_USERNAMES, USERNAME_PATTERN } from '../lib/legal.js';
 
 const loadUser = async (id: string) => {
   const rows = await sql`
@@ -21,6 +23,31 @@ const connections = async (id: string): Promise<string[]> =>
     ? (await sql`SELECT provider FROM oauth_identities WHERE user_id = ${id} ORDER BY provider`).map((r) => r.provider as string)
     : [];
 
+// Sinal de robô: partidas concluídas perto do tempo mínimo humano (pace_ratio = tempo / mínimo). Só informa; nada é bloqueado.
+export const SUSPECT_RATIO = 1.5;
+const listSuspicious = async () => {
+  try {
+    const rows = await sql`
+      SELECT u.id, u.username, u.email,
+             count(*) FILTER (WHERE p.pace_ratio < ${SUSPECT_RATIO})::int AS flagged,
+             count(*)::int AS plays,
+             min(p.pace_ratio)::float AS best_ratio,
+             max(p.finished_at) AS last_at
+      FROM plays p JOIN users u ON u.id = p.user_id
+      WHERE p.pace_ratio IS NOT NULL AND p.finished_at > now() - interval '7 days'
+      GROUP BY u.id
+      HAVING count(*) FILTER (WHERE p.pace_ratio < ${SUSPECT_RATIO}) >= 3
+      ORDER BY flagged DESC, best_ratio ASC LIMIT 50`;
+    return {
+      available: true, threshold: SUSPECT_RATIO,
+      users: rows.map((r) => ({ id: r.id, username: r.username, email: r.email, flagged: r.flagged, plays: r.plays, bestRatio: Number(r.best_ratio.toFixed(2)), lastAt: new Date(r.last_at).toISOString() })),
+    };
+  } catch (err: any) {
+    if (err?.code === '42703') return { available: false, threshold: SUSPECT_RATIO, users: [] }; // migração 012 pendente
+    throw err;
+  }
+};
+
 const PAGE_SIZE = 25;
 const listUsers = async (q: string, page: number) => {
   const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
@@ -31,7 +58,7 @@ const listUsers = async (q: string, page: number) => {
         SELECT u.id, u.username, u.email, u.role, u.created_at,
                coalesce(to_jsonb(u)->>'signup_method', 'password') AS signup_method,
                coalesce((to_jsonb(u)->>'email_verified')::boolean, false) AS email_verified,
-               (u.password_hash IS NOT NULL) AS has_password,
+               (u.password_hash IS NOT NULL) AS has_password, u.terms_version, to_jsonb(u)->>'privacy_version' AS privacy_version, (to_jsonb(u) ? 'privacy_version') AS has_privacy,
                coalesce((SELECT array_agg(i.provider ORDER BY i.provider) FROM oauth_identities i WHERE i.user_id = u.id), '{}') AS providers,
                count(*) OVER() AS total
         FROM users u
@@ -39,7 +66,7 @@ const listUsers = async (q: string, page: number) => {
         ORDER BY u.created_at DESC LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`
     : await sql`
         SELECT u.id, u.username, u.email, u.role, u.created_at, 'password' AS signup_method, false AS email_verified,
-               (u.password_hash IS NOT NULL) AS has_password, '{}'::text[] AS providers, count(*) OVER() AS total
+               (u.password_hash IS NOT NULL) AS has_password, '{}'::text[] AS providers, u.terms_version, NULL::text AS privacy_version, false AS has_privacy, count(*) OVER() AS total
         FROM users u
         WHERE ${q === ''} OR u.username ILIKE ${like} OR u.email ILIKE ${like}
         ORDER BY u.created_at DESC LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`;
@@ -48,6 +75,8 @@ const listUsers = async (q: string, page: number) => {
     users: rows.map((r) => ({
       id: r.id, username: r.username, email: r.email, role: r.role, createdAt: new Date(r.created_at).toISOString(),
       signupMethod: r.signup_method, emailVerified: r.email_verified,
+      termsAccepted: r.terms_version === TERMS_VERSION,
+      privacyAccepted: r.has_privacy ? r.privacy_version === PRIVACY_VERSION : r.terms_version === TERMS_VERSION,
       loginMethods: [...(r.has_password ? ['password'] : []), ...(r.providers as string[])],
     })),
   };
@@ -64,14 +93,14 @@ const checkPassword = async (user: Record<string, any>, password: string, ip: st
 };
 
 // GET: dados do próprio usuário (também usado para saber se há alguém logado).
-// POST { action }: logout | username | password | delete | unlink | accept_terms
+// POST { action }: logout | logout_all | username | password | secret | delete | unlink | accept_terms
 export default route(['GET', 'POST'], async (req, res) => {
   // Sair não exige sessão válida: sempre limpa o cookie.
   if (req.method === 'POST' && req.body?.action === 'logout') {
     endSession(res);
     return { ok: true };
   }
-  const session = await requireSession(req);
+  const session = await requireSession(req, { allowPending: true }); // o Perfil precisa funcionar para registrar o aceite
   const user = await loadUser(session.id);
   // "Flags" de login: quais formas de entrar a conta tem ativas (senha e/ou provedores conectados).
   const me = async () => {
@@ -85,7 +114,11 @@ export default route(['GET', 'POST'], async (req, res) => {
     if (user.role !== 'admin') throw new HttpError(403, 'Acesso restrito ao administrador.');
     return await listUsers(String(req.query.q ?? '').trim().slice(0, 60), Math.max(1, Number(req.query.page) || 1));
   }
-  if (req.method === 'GET') return { user: await me(), legalVersion: LEGAL_VERSION };
+  if (req.method === 'GET' && req.query?.suspicious) { // partidas com ritmo de robô, só para administrador
+    if (user.role !== 'admin') throw new HttpError(403, 'Acesso restrito ao administrador.');
+    return await listSuspicious();
+  }
+  if (req.method === 'GET') return { user: await me(), legalVersion: { terms: TERMS_VERSION, privacy: PRIVACY_VERSION } };
 
   const body = req.body ?? {};
   const ip = clientIp(req);
@@ -101,7 +134,7 @@ export default route(['GET', 'POST'], async (req, res) => {
       try {
         const rows = await sql`
           UPDATE users SET username = ${username} WHERE id = ${user.id}
-          RETURNING id, username, email, role, created_at, terms_version`;
+          RETURNING *`;
         return { user: { ...(await me()), ...publicUser(rows[0]) } };
       } catch (err: any) {
         if (err?.code === '23505') throw new HttpError(409, 'Este nome de usuário já está em uso.');
@@ -110,7 +143,7 @@ export default route(['GET', 'POST'], async (req, res) => {
     }
 
     case 'password': {
-      const next = str(body.newPassword, 'Nova senha', 8, 100);
+      const next = newPassword(body.newPassword, 'Nova senha');
       // Conta criada pelo Google/Apple ainda não tem senha: define a primeira sem pedir a atual (a sessão já prova quem é).
       const current = user.password_hash ? str(body.currentPassword, 'Senha atual', 1, 100) : '';
       if (user.password_hash) await checkPassword(user, current, ip, 'Senha atual incorreta.');
@@ -121,6 +154,32 @@ export default route(['GET', 'POST'], async (req, res) => {
         UPDATE users SET password_hash = ${hash}, token_version = token_version + 1 WHERE id = ${user.id}
         RETURNING token_version`;
       await startSession(req, res, { id: user.id, version: rows[0].token_version });
+      return { ok: true };
+    }
+
+    case 'resend_verification': {
+      // Reenvia o link de confirmação de e-mail (no máximo 3 por hora por conta e 10 por IP).
+      if (user.email_verified === true) throw new HttpError(400, 'Seu e-mail já está confirmado.');
+      if (!(await verificationAvailable())) throw new HttpError(503, 'A confirmação de e-mail não está disponível no momento.', true);
+      await throttle(`verify:${user.id}`, ip, 3);
+      await throttle('verify-ip', ip, 10);
+      await sendVerification(req, { id: user.id, email: user.email });
+      return { ok: true };
+    }
+
+    case 'secret': {
+      // Palavra secreta nova (recuperação de senha). Exige a senha atual, como qualquer ação sensível.
+      if (!user.password_hash) throw new HttpError(400, 'Defina uma senha antes de criar a palavra secreta.');
+      await checkPassword(user, str(body.currentPassword, 'Senha atual', 1, 100), ip, 'Senha atual incorreta.');
+      const word = str(body.secretWord, 'Palavra secreta', 8, 100).toLowerCase();
+      await sql`UPDATE users SET secret_hash = ${await bcrypt.hash(word, 11)} WHERE id = ${user.id}`;
+      return { ok: true };
+    }
+
+    case 'logout_all': {
+      // Encerra a sessão em TODOS os aparelhos (inclusive este): útil se um aparelho foi perdido ou emprestado.
+      await sql`UPDATE users SET token_version = token_version + 1 WHERE id = ${user.id}`;
+      endSession(res);
       return { ok: true };
     }
 
@@ -172,10 +231,17 @@ export default route(['GET', 'POST'], async (req, res) => {
     }
 
     case 'accept_terms': {
-      const rows = await sql`
-        UPDATE users SET terms_version = ${LEGAL_VERSION}, terms_accepted_at = now() WHERE id = ${user.id}
-        RETURNING id, username, email, role, created_at, terms_version`;
-      return { user: { ...(await me()), ...publicUser(rows[0]) } };
+      // Um flag por documento, só com true explícito. Já aceito na versão vigente não muda (nem a data do aceite).
+      const wantTerms = body.terms === true, wantPrivacy = body.privacy === true;
+      if (!wantTerms && !wantPrivacy) throw new HttpError(400, 'Marque os documentos que você aceita.');
+      if (wantTerms) {
+        await sql`UPDATE users SET terms_version = ${TERMS_VERSION}, terms_accepted_at = now() WHERE id = ${user.id} AND terms_version IS DISTINCT FROM ${TERMS_VERSION}`;
+      }
+      if (wantPrivacy && 'privacy_version' in user) {
+        await sql`UPDATE users SET privacy_version = ${PRIVACY_VERSION}, privacy_accepted_at = now() WHERE id = ${user.id} AND privacy_version IS DISTINCT FROM ${PRIVACY_VERSION}`;
+      }
+      const fresh = await loadUser(user.id);
+      return { user: { ...publicUser(fresh), hasPassword: Boolean(fresh.password_hash), connections: await connections(user.id), loginMethods: [...(fresh.password_hash ? ['password'] : []), ...(await connections(user.id))] } };
     }
 
     default:
