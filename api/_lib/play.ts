@@ -1,4 +1,5 @@
 import { HttpError, sql } from './db.js';
+import { refreshTotals } from './ranking.js';
 import { MIN_SECONDS_PER_ACTION } from '../../lib/scoring.js';
 import { Tier, TierProgress, emptyProgress } from '../../lib/tiers.js';
 
@@ -78,6 +79,7 @@ export const finishPlay = async (play: Play, points: number, actions?: number): 
     SELECT (SELECT count(*) FROM claimed)::int AS claimed, (SELECT count(*) FROM advanced)::int AS advanced`;
   if (rows[0].claimed !== 1) throw new HttpError(409, 'Esta partida já foi encerrada.');
   await recordPace(play, actions);
+  if (rows[0].advanced === 1) await refreshTotals(play.user_id, play.game); // pontuação nova: atualiza os totais do ranking
   const awarded = rows[0].advanced === 1;
   return { points: awarded ? points : 0, awarded, progress: await loadProgress(play.user_id, play.game) };
 };

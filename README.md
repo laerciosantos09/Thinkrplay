@@ -109,6 +109,13 @@ Assinatura **mensal** que **remove os anúncios** e mostra o **selo ⭐** no per
 - Defina na Vercel: `APP_URL`, `CHALLENGE_SECRET` e (com Apple) `OAUTH_TOKEN_KEY`; o painel do admin avisa se faltarem.
 - Limites conhecidos: o app não confirma e-mail no cadastro (por isso a conta só é unificada com login social após confirmar a senha) e jogos de lógica podem ser resolvidos por robôs.
 
+## Rankings (tabela + cache)
+
+- **Salvos em tabela:** `ranking_totals` guarda pontos, desafios e último horário por usuário, jogo (ou `all` = geral) e período (dia, semana, mês e ano, fuso de São Paulo). Cada pontuação nova **recalcula** os totais dos períodos em andamento desse usuário a partir de `scores` (idempotente: nunca conta em dobro). A leitura é por índice (top 10 + sua posição), então o ranking continua atualizado a cada desafio concluído e fica rápido com muitos usuários. `scores` segue como fonte da verdade: rodar a migração `013` de novo recalcula tudo.
+- **Cache de 1 ano só onde faz sentido:** períodos **encerrados** (ontem, semana/mês/ano passados) não mudam mais, então `GET /api/ranking?game=…&period=daily|weekly|monthly|yearly&back=N` fica em memória no servidor e no navegador (`Cache-Control: private, max-age=31536000, immutable`) por 1 ano. As respostas encerradas não trazem dados pessoais (sem "você" nem selo). Os períodos em andamento nunca são cacheados.
+- Na tela de ranking, **← Anterior / Próximo →** navega pelos períodos passados.
+- Sem a migração `013` o ranking continua funcionando (soma direto de `scores`) e o painel do admin avisa.
+
 ## Confirmação de e-mail
 
 Desligada por padrão: **Configurações → Confirmação de e-mail**. Ligada, quem se cadastra com senha recebe um link (uso único, 24 h; o banco guarda só o hash do token) e **não usa o app até confirmar** (o servidor responde `403 email_unverified`). Contas que já existiam quando você liga o recurso **não** são barradas. Login com Google/Apple já conta como e-mail confirmado. Se alguém cadastrar com senha o e-mail de outra pessoa (e nunca confirmar), o dono verdadeiro que entrar pelo Google/Apple fica com a conta e a senha cadastrada antes é apagada.
@@ -235,6 +242,7 @@ O SQL fica em **migrações numeradas** (`db/migrations/`). Cada uma roda sozinh
 | `db/migrations/010_privacy_acceptance.sql` | Aceite separado da Política de Privacidade (`privacy_version`) |
 | `db/migrations/011_email_verification.sql` | Confirmação de e-mail: `email_tokens` e `users.verification_required` |
 | `db/migrations/012_play_signals.sql` | Ritmo das partidas (`plays.pace_ratio`) para o painel de suspeitos |
+| `db/migrations/013_ranking_totals.sql` | Totais do ranking salvos em tabela (`ranking_totals`), recalculados a partir de `scores` (pode rodar de novo para reparar) |
 | `db/schema.sql` | Tudo junto, para banco novo. **Gerado** das migrações (`npm run db:schema`) |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
 | `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas |

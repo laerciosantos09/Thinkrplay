@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { RankingPeriod, Score } from '../types';
-import { fetchRanking } from '../services/api';
+import { fetchPastRanking, fetchRanking } from '../services/api';
 
 interface RankingTableProps {
   slug: string; // slug do jogo ou "all" (ranking geral)
@@ -24,16 +24,35 @@ const RankingTable: React.FC<RankingTableProps> = ({ slug, refreshKey = 0 }) => 
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const loading = useRef(false);
+  // Períodos anteriores: back = 0 é o atual (atualiza sozinho); 1, 2... são os já encerrados (não mudam mais).
+  const [back, setBack] = useState(0);
+  const [past, setPast] = useState<{ start: string; rows: Score[] } | null>(null);
+  const [pastError, setPastError] = useState<string | null>(null);
 
   useEffect(() => {
     setScores(null);
     setUpdatedAt(null);
+    setBack(0);
   }, [slug]);
+
+  useEffect(() => {
+    if (back === 0) {
+      setPast(null);
+      return;
+    }
+    let alive = true;
+    setPast(null);
+    setPastError(null);
+    fetchPastRanking(slug, period, back)
+      .then((r) => alive && setPast({ start: r.start, rows: r.rows }))
+      .catch((e: Error) => alive && setPastError(e.message));
+    return () => { alive = false; };
+  }, [slug, period, back]);
 
   useEffect(() => {
     let alive = true;
     const load = () => {
-      if (loading.current || document.hidden) return;
+      if (loading.current || document.hidden || back > 0) return; // período encerrado não precisa atualizar
       loading.current = true;
       fetchRanking(slug)
         .then((data) => {
@@ -57,9 +76,21 @@ const RankingTable: React.FC<RankingTableProps> = ({ slug, refreshKey = 0 }) => 
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [slug, refreshKey]);
+  }, [slug, refreshKey, back]);
 
-  const list = scores?.[period] ?? [];
+  const list = back > 0 ? past?.rows ?? [] : scores?.[period] ?? [];
+  const loaded = back > 0 ? past !== null : scores !== null;
+  const failed = back > 0 ? pastError : error;
+
+  // Rótulo do período encerrado, a partir do primeiro dia dele (AAAA-MM-DD).
+  const label = (() => {
+    if (back === 0 || !past) return null;
+    const d = new Date(`${past.start}T12:00:00`);
+    if (period === 'daily') return d.toLocaleDateString('pt-BR');
+    if (period === 'weekly') return `Semana de ${d.toLocaleDateString('pt-BR')}`;
+    if (period === 'monthly') return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    return String(d.getFullYear());
+  })();
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -77,7 +108,7 @@ const RankingTable: React.FC<RankingTableProps> = ({ slug, refreshKey = 0 }) => 
           {periods.map((p) => (
             <button
               key={p.value}
-              onClick={() => setPeriod(p.value)}
+              onClick={() => { setPeriod(p.value); setBack(0); }}
               className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
                 period === p.value ? 'bg-brand-600 text-white shadow-md shadow-brand-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
               }`}
@@ -86,12 +117,17 @@ const RankingTable: React.FC<RankingTableProps> = ({ slug, refreshKey = 0 }) => 
             </button>
           ))}
         </div>
+        <div className="flex items-center justify-between gap-2 mt-3 text-xs font-bold">
+          <button onClick={() => setBack(back + 1)} disabled={back >= 400} className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40">← Anterior</button>
+          <span className="text-slate-500 truncate">{back === 0 ? 'Em andamento' : label ?? '...'}</span>
+          <button onClick={() => setBack(back - 1)} disabled={back === 0} className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 disabled:opacity-40">Próximo →</button>
+        </div>
       </div>
 
       <div className="p-4">
-        {error && !scores ? (
-          <p className="text-center py-8 text-red-500 text-sm">{error}</p>
-        ) : !scores ? (
+        {failed && !loaded ? (
+          <p className="text-center py-8 text-red-500 text-sm">{failed}</p>
+        ) : !loaded ? (
           <p className="text-center py-8 text-slate-400 text-sm">Carregando...</p>
         ) : list.length === 0 ? (
           <p className="text-center py-8 text-slate-400 text-sm">Nenhum recorde neste período.</p>

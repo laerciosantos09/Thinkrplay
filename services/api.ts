@@ -131,6 +131,9 @@ export const startCheckout = () => request<{ url: string }>('billing', { body: {
 export const openBillingPortal = () => request<{ url: string }>('billing', { body: { action: 'portal' } });
 
 export const fetchProgress = () => request<Record<string, Partial<TierProgress>>>('progress');
+// Período já encerrado (back = 1 é o anterior): não muda mais, então o servidor e o navegador guardam por 1 ano.
+export const fetchPastRanking = (game: string, period: RankingPeriod, back: number) =>
+  request<{ period: RankingPeriod; start: string; closed: true; rows: Score[] }>(`ranking?game=${encodeURIComponent(game)}&period=${period}&back=${back}`);
 export const fetchRanking = (game: string) =>
   request<Record<RankingPeriod, Score[]>>(`ranking?game=${encodeURIComponent(game)}`);
 

@@ -454,6 +454,19 @@ for (let i = 1; i <= 11; i++) {
   const u = (await pg.query(`INSERT INTO users (username,email,password_hash,secret_hash) VALUES ($1,$2,$3,$3) RETURNING id`, [`rk${i}`, `rk${i}@x.com`, fakeHash])).rows[0].id;
   await pg.query(`INSERT INTO scores (user_id, game, tier, points, level) VALUES ($1,'sudoku','easy',$2,1), ($1,'hanoi','easy',$2,1)`, [u, 20000 + i * 10]);
 }
+// ranking_totals é derivada de scores: aqui os scores são inseridos direto, então recalcula (a migração 013 faz isso e é repetível)
+const rebuildTotals = async () => { for (const st of readFileSync(path.join(root, 'db/migrations/013_ranking_totals.sql'), 'utf8').split(/;\s*\n/).map((x) => x.trim()).filter((x) => /^INSERT/i.test(x))) await pg.query(st); };
+await rebuildTotals();
+// a tabela salva tem que ser IGUAL à soma recalculada de scores (provas de que a atualização incremental não erra nem duplica)
+const totalsVsScores = async (label) => {
+  const saved = (await pg.query(`SELECT user_id, game, period, period_start::text d, points, solved FROM ranking_totals ORDER BY 1,2,3,4`)).rows;
+  const live = (await pg.query(`
+    SELECT s.user_id, g.game, p.period, date_trunc(p.period, s.created_at AT TIME ZONE 'America/Sao_Paulo')::date::text d, SUM(s.points)::int points, COUNT(*)::int solved
+    FROM scores s CROSS JOIN (VALUES ('day'),('week'),('month'),('year')) AS p(period) CROSS JOIN LATERAL (VALUES (s.game),('all')) AS g(game)
+    GROUP BY 1,2,3,4 ORDER BY 1,2,3,4`)).rows;
+  assert.deepEqual(saved, live, `ranking_totals == soma de scores (${label})`);
+};
+await totalsVsScores('depois da carga');
 cookie = anaCookie;
 const allBefore = await ok('ranking', { method: 'GET', query: { game: 'all' } });
 assert.equal(allBefore.daily.filter((r) => !r.isMe).length, 10, 'top 10');
@@ -472,6 +485,7 @@ assert.equal(await code('ranking', { method: 'GET', query: { game: 'xadrez' } })
 // concluir um desafio atualiza o ranking na hora (geral e do jogo), sem nenhum cache
 cookie = anaCookie;
 const hardNext = await solveMemory('hard', 2);
+await totalsVsScores('depois de concluir um desafio');
 const allAfter = await ok('ranking', { method: 'GET', query: { game: 'all' } });
 const meAfter = allAfter.daily.find((r) => r.isMe);
 assert.equal(meAfter.score, meRow.score + hardNext.points, 'ranking geral somou os pontos do desafio');
@@ -482,6 +496,7 @@ assert.equal(memAfter.solved, 32);
 assert.ok(meAfter.score > memAfter.score);
 // username novo aparece no ranking
 await pg.query(`INSERT INTO scores (user_id, game, tier, points, level) SELECT id, 'lights', 'easy', 99999, 1 FROM users WHERE username = 'carla.m'`);
+await rebuildTotals();
 assert.equal((await ok('ranking', { method: 'GET', query: { game: 'all' } })).daily[0].username, 'carla.m');
 
 // --- Excluir conta: exige senha e confirmação, apaga tudo e libera o e-mail
@@ -576,6 +591,7 @@ const pamId = (await pg.query(`SELECT id FROM users WHERE username='pam'`)).rows
 const adminC = anaCookie; // ana é admin neste ponto
 await pg.query(`UPDATE users SET role='admin' WHERE username='ana'`);
 await pg.query(`INSERT INTO scores (user_id, game, tier, points, level) VALUES ($1,'sudoku','easy',100,1)`, [pamId]);
+await rebuildTotals();
 
 // desligado por padrão: ninguém vê oferta e o checkout é recusado
 cookie = pamCookie;
@@ -820,6 +836,46 @@ await pg.query('ALTER TABLE plays RENAME COLUMN pace_ratio TO pace_off');
 cookie = anaCookie;
 assert.equal((await solveMemory('hard', 3).catch((e) => ({ err: e }))).err, undefined, 'partida concluída sem a coluna pace_ratio');
 await pg.query('ALTER TABLE plays RENAME COLUMN pace_off TO pace_ratio');
+
+// --- rankings de períodos encerrados: leitura da tabela + cache de 1 ano
+cookie = adminC;
+const vid = (await pg.query(`INSERT INTO users (username,email,password_hash,secret_hash) VALUES ('velho1','velho1@x.com',$1,$1) RETURNING id`, [fakeHash])).rows[0].id;
+await pg.query(`INSERT INTO scores (user_id, game, tier, points, level, created_at) VALUES ($1,'sudoku','easy',777,1, (date_trunc('day', now() AT TIME ZONE 'America/Sao_Paulo') - interval '12 hours') AT TIME ZONE 'America/Sao_Paulo')`, [vid]);
+await rebuildTotals();
+const closed = await call('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '1' } });
+assert.equal(closed.statusCode, 200);
+assert.equal(closed.headers['Cache-Control'], 'private, max-age=31536000, immutable', 'período encerrado: cache de 1 ano');
+assert.equal(closed.body.closed, true);
+assert.deepEqual(closed.body.rows.map((r) => [r.position, r.username, r.score]), [[1, 'velho1', 777]]);
+assert.ok(closed.body.rows.every((r) => r.isMe === false && r.premium === false), 'sem dados pessoais (a resposta pode ficar em cache)');
+await pg.query(`DELETE FROM ranking_totals`); // prova do cache do servidor: a segunda leitura não depende mais do banco
+const closedAgain = await call('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '1' } });
+assert.deepEqual(closedAgain.body, closed.body, 'servido do cache');
+cookie = anaCookie;
+assert.deepEqual((await call('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '1' } })).body, closed.body, 'o mesmo cache serve qualquer usuário');
+assert.equal((await call('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '2' } })).body.rows.length, 0, 'dia anterior sem pontuação');
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '0' } }), 400, 'back=0 é o período atual (use a rota sem period)');
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '401' } }), 400);
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'hourly', back: '1' } }), 400);
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: "1'; DROP TABLE users;--" } }), 400);
+cookie = '';
+assert.equal(await code('ranking', { method: 'GET', query: { game: 'sudoku', period: 'daily', back: '1' } }), 401, 'também exige login');
+// o ranking em andamento nunca é cacheado
+cookie = anaCookie;
+assert.equal((await call('ranking', { method: 'GET', query: { game: 'all' } })).headers['Cache-Control'], 'no-store');
+await rebuildTotals();
+
+// 013 pendente: ranking e partidas seguem funcionando, somando direto de scores
+const withTable = await ok('ranking', { method: 'GET', query: { game: 'all' } });
+await pg.query('ALTER TABLE ranking_totals RENAME TO ranking_totals_off');
+assert.deepEqual(await ok('ranking', { method: 'GET', query: { game: 'all' } }), withTable, 'mesmo resultado sem a tabela');
+cookie = adminC; setup = await ok('settings', { method: 'GET' });
+assert.ok(setup.setup.missingMigrations.includes('013_ranking_totals.sql'));
+cookie = anaCookie;
+assert.equal((await solveMemory('hard', 3).catch((e) => ({ err: e }))).err, undefined, 'concluir desafio sem a tabela de totais');
+await pg.query('ALTER TABLE ranking_totals_off RENAME TO ranking_totals');
+await rebuildTotals();
+await totalsVsScores('reparado pela migração');
 
 console.log('API OK');
 process.exit(0);

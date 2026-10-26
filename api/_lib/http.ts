@@ -130,7 +130,7 @@ export const route = (methods: string[], handler: Handler) =>
       }
       assertDb();
       const body = await handler(req, res);
-      res.setHeader('Cache-Control', 'no-store');
+      if (!res.getHeader('Cache-Control')) res.setHeader('Cache-Control', 'no-store'); // o handler pode definir outro (ex.: ranking de período encerrado)
       res.status(200).json(body);
     } catch (err) {
       if (err instanceof HttpError && (err.status < 500 || err.expose)) {
