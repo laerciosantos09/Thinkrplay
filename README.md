@@ -146,12 +146,15 @@ npm run build -- android-aab --skip-web   # ou direto, sem menu
 | Build | O que gera | Onde roda |
 | --- | --- | --- |
 | `android-apk-debug` | APK de teste, instala direto no celular | Windows/Mac/Linux com JDK + Android SDK |
+| `android-emulator` | compila o APK de teste, **liga o emulador** (ou usa um celular conectado), instala e abre o app | idem |
 | `android-apk` | APK de release (assinado se houver `android/keystore.properties`) | idem |
 | `android-aab` | AAB de release, o arquivo que vai para a **Play Store** | idem |
 | `ios-archive` | `.xcarchive` para enviar à App Store | **só Mac** com Xcode e CocoaPods |
 | `android-studio` / `ios-studio` | abre o projeto na IDE | Android Studio / Mac |
 | `sync` | só faz o build do site e copia para `android/` e `ios/` | qualquer um |
 | `assets` | regenera ícones e splash a partir de `mobile/assets/` | qualquer um |
+
+**Rodar no emulador (Android):** instale o Android Studio, crie um emulador em *Device Manager → Create Device* (ex.: Pixel 7, Android 14) e defina `ANDROID_HOME` (no Windows costuma ser `%LOCALAPPDATA%\Android\Sdk`). Depois: `npm run build -- android-emulator`. O script compila, liga o emulador (`--avd=Nome` escolhe qual), instala e abre o app. Com um celular conectado por USB (depuração USB ligada) ele usa o celular (`--device=serial` escolhe). O emulador abre o **site publicado** (`CAP_SERVER_URL`, precisa ser HTTPS, ex.: a URL de preview da Vercel); `localhost` do seu computador não é visto de dentro do emulador.
 
 Os arquivos prontos ficam em `mobile/builds/`, com a versão no nome (a versão vem de `mobile/version.json`: aumente `versionCode` a cada envio). Opções: `--url=https://...` (em vez do `.env`) e `--skip-web` (não refaz o build do site).
 

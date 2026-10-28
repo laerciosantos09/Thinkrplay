@@ -3,8 +3,9 @@
 //   node build.mjs                      -> menu interativo
 //   node build.mjs android-apk-debug    -> direto, sem menu (veja a lista abaixo)
 //   node build.mjs android-aab --url=https://seudominio.com --skip-web
+//   node build.mjs android-emulator [--avd=NomeDoEmulador] [--device=emulator-5554]
 // O endereço do site vem de --url, da variável CAP_SERVER_URL ou de mobile/.env. Os arquivos gerados ficam em mobile/builds/.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import path from 'node:path';
@@ -18,6 +19,7 @@ const isMac = process.platform === 'darwin';
 const TARGETS = {
   'sync':               { label: 'Só sincronizar (build do site + copiar para android/ e ios/)', platform: null },
   'android-apk-debug':  { label: 'Android · APK de teste (instala direto no celular, sem assinatura)', platform: 'android' },
+  'android-emulator':   { label: 'Android · compilar e rodar no emulador (ou celular conectado por USB)', platform: 'android' },
   'android-apk':        { label: 'Android · APK de release (assinado se houver keystore.properties)', platform: 'android' },
   'android-aab':        { label: 'Android · AAB de release (arquivo para enviar à Play Store)', platform: 'android' },
   'android-studio':     { label: 'Android · abrir no Android Studio', platform: 'android' },
@@ -100,6 +102,63 @@ const gradle = (task) => {
   run(isWin ? 'gradlew.bat' : './gradlew', [task, `-PappVersionName=${version.versionName}`, `-PappVersionCode=${version.versionCode}`], { cwd: path.join(here, 'android') });
 };
 
+// ---- emulador / aparelho ----------------------------------------------------------------------------------------
+const sdkDir = () => {
+  const env = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+  if (env) return env;
+  const local = path.join(here, 'android', 'local.properties');
+  if (existsSync(local)) return readFileSync(local, 'utf8').match(/^sdk\.dir=(.*)$/m)?.[1]?.trim().replace(/\\\\/g, '\\').replace(/\\:/g, ':'); // desfaz o escape do .properties (C\\:\\\\Users)
+  return undefined;
+};
+const sdkTool = (...parts) => {
+  const dir = sdkDir();
+  const file = dir && path.join(dir, ...parts.slice(0, -1), parts.at(-1) + (isWin ? '.exe' : ''));
+  return file && existsSync(file) ? file : null;
+};
+const capture = (cmd, a) => spawnSync(cmd, a, { encoding: 'utf8', shell: false });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const runOnAndroid = async (apk) => {
+  const adb = sdkTool('platform-tools', 'adb');
+  if (!adb) die('adb não encontrado. No Android Studio: SDK Manager → SDK Tools → "Android SDK Platform-Tools".');
+  const online = () => capture(adb, ['devices']).stdout.split('\n').slice(1).map((l) => l.trim().split(/\s+/)).filter(([id, st]) => id && st === 'device').map(([id]) => id);
+  let serial = flag('device');
+  if (!serial) serial = online()[0];
+
+  if (!serial) { // nenhum emulador/aparelho ligado: sobe um emulador
+    const emulator = sdkTool('emulator', 'emulator');
+    if (!emulator) die('Emulador não encontrado. No Android Studio: SDK Manager → SDK Tools → "Android Emulator". Ou conecte um celular por USB (com depuração USB ligada).');
+    const avds = capture(emulator, ['-list-avds']).stdout.split('\n').map((x) => x.trim()).filter(Boolean);
+    if (avds.length === 0) die('Nenhum emulador criado. No Android Studio: Device Manager → Create Device (ex.: Pixel 7 com Android 14) e rode de novo.');
+    let avd = flag('avd');
+    if (!avd) {
+      if (avds.length === 1 || !process.stdin.isTTY) avd = avds[0];
+      else {
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        avds.forEach((n, i) => console.log(`  ${i + 1}) ${n}`));
+        avd = avds[Number((await rl.question('\nQual emulador? Número: ')).trim()) - 1];
+        rl.close();
+      }
+    }
+    if (!avd || !avds.includes(avd)) die(`Emulador inválido. Disponíveis: ${avds.join(', ')}`);
+    console.log(`\nLigando o emulador "${avd}"... (a primeira vez demora)`);
+    const child = spawn(emulator, ['-avd', avd, '-netdelay', 'none', '-netspeed', 'full'], { stdio: 'ignore', detached: true });
+    child.unref();
+    for (let i = 0; i < 90 && !serial; i++) { await sleep(2000); serial = online()[0]; }
+    if (!serial) die('O emulador não ficou pronto a tempo. Abra-o pelo Android Studio (Device Manager) e rode de novo.');
+  }
+
+  console.log(`\nAparelho: ${serial}. Aguardando o Android terminar de iniciar...`);
+  for (let i = 0; i < 90; i++) {
+    if (capture(adb, ['-s', serial, 'shell', 'getprop', 'sys.boot_completed']).stdout.trim() === '1') break;
+    await sleep(2000);
+    if (i === 89) die('O Android não terminou de iniciar a tempo.');
+  }
+  run(adb, ['-s', serial, 'install', '-r', apk]);
+  run(adb, ['-s', serial, 'shell', 'am', 'start', '-n', 'com.thinkrplay.app/.MainActivity']);
+  console.log(`\n✔ App aberto em ${serial}. Para ver os logs: adb -s ${serial} logcat | grep -i -E "Capacitor|chromium"`);
+};
+
 const keep = (from, name) => {
   if (!existsSync(from)) die(`O build terminou, mas não achei o arquivo esperado: ${from}`);
   const dir = path.join(here, 'builds');
@@ -131,6 +190,12 @@ switch (target) {
     gradle('assembleDebug');
     keep(path.join(outputs, 'apk', 'debug', 'app-debug.apk'), 'thinkrplay-debug');
     break;
+  case 'android-emulator': {
+    gradle('assembleDebug');
+    const apk = keep(path.join(outputs, 'apk', 'debug', 'app-debug.apk'), 'thinkrplay-debug');
+    await runOnAndroid(apk);
+    break;
+  }
   case 'android-apk': {
     gradle('assembleRelease');
     const signed = path.join(outputs, 'apk', 'release', 'app-release.apk');
