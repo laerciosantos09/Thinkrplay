@@ -1,0 +1,19 @@
+{
+  "name": "thinkrplay-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App nativo Android/iOS (Capacitor) do Thinkrplay: tudo para compilar fica nesta pasta.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "sync": "node build.mjs sync",
+    "assets": "capacitor-assets generate --android --ios"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^7.6.10",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.6.10",
+    "@capacitor/core": "^7.6.10",
+    "@capacitor/ios": "^7.6.10"
+  }
+}

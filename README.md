@@ -131,25 +131,38 @@ Passos: crie a conta no Resend → verifique seu domínio (registros DNS) → cr
 
 Cada partida concluída guarda o ritmo (`tempo ÷ mínimo humano`). Em **Cadastros → 🤖 Partidas suspeitas** o admin vê quem teve 3 ou mais partidas nos últimos 7 dias abaixo de 1,5× o mínimo. É só um sinal para investigar: **nada é bloqueado automaticamente** (um jogador muito bom também pode aparecer). Precisa da migração `012`.
 
-## App nativo (Android e iOS)
+## App nativo (Android e iOS): tudo na pasta `mobile/`
 
-Os projetos `android/` e `ios/` (Capacitor) abrem **este mesmo site** num WebView: a sessão, a API, o ranking e as atualizações são as da web, sem manter dois códigos. Dentro do app (User-Agent `ThinkrplayApp`, ver `lib/platform.ts`) ficam **ocultos**: login com Google/Apple (o Google bloqueia login em WebView), compra do Premium (as lojas exigem a cobrança interna delas) e anúncios do AdSense (em app seria AdMob).
+Tudo do app nativo (projetos Android e iOS, ícones, configuração e script de build) fica em **`mobile/`**, e você compila **desse diretório só**, escolhendo o tipo de build. O app abre **este mesmo site** num WebView (Capacitor): a sessão, a API, o ranking e as atualizações são as da web, sem manter dois códigos.
 
 ```bash
-# 1) uma vez: defina o endereço publicado e o ID do pacote (capacitor.config.ts: appId)
-export CAP_SERVER_URL=https://seudominio.com
-npm run cap:sync        # build + copia a configuração para android/ e ios/
-npm run cap:android     # abre o Android Studio → Build → Generate Signed Bundle (.aab)
-npm run cap:ios         # abre o Xcode (só no Mac) → Product → Archive
-npm run cap:assets      # se trocar o ícone/splash em assets/ (icon-only.png, splash.png)
+cd mobile
+cp .env.example .env        # 1ª vez: coloque o endereço HTTPS do site (CAP_SERVER_URL=https://seudominio.com)
+npm install                 # 1ª vez
+npm run build               # menu: escolha qual build gerar
+npm run build -- android-aab --skip-web   # ou direto, sem menu
 ```
 
-- **Contas de loja:** Google Play Console (taxa única de US$ 25) e Apple Developer Program (US$ 99/ano). O `appId` (`com.thinkrplay.app`) não muda depois de publicar.
-- **Android:** gere o `.aab` assinado (crie e **guarde** o keystore) e envie à Play Console. **iOS:** precisa de Mac com Xcode e `pod install` na pasta `ios/App`.
-- **Aprovação das lojas:** a Apple costuma recusar apps que são só um site embrulhado (diretriz 4.2). Para aumentar a chance, publique primeiro como PWA ou acrescente recursos nativos (notificações, compartilhamento). Política de privacidade e exclusão de conta (já existem no app) são exigidas pelas duas lojas.
-- **Premium nas lojas:** para vender dentro do app é preciso Google Play Billing / compra integrada da Apple (outro fluxo, não incluso). Enquanto isso o Premium só é vendido pela web.
-- O `android/` já vem com `allowBackup=false` e tráfego só por HTTPS. Os arquivos gerados (`capacitor.config.json`, `public/`) ficam fora do git: rode `npm run cap:sync` após clonar.
-- Não consegui compilar o APK/IPA no ambiente de desenvolvimento (sem Android SDK/Xcode): faça o primeiro build local e teste num aparelho.
+| Build | O que gera | Onde roda |
+| --- | --- | --- |
+| `android-apk-debug` | APK de teste, instala direto no celular | Windows/Mac/Linux com JDK + Android SDK |
+| `android-apk` | APK de release (assinado se houver `android/keystore.properties`) | idem |
+| `android-aab` | AAB de release, o arquivo que vai para a **Play Store** | idem |
+| `ios-archive` | `.xcarchive` para enviar à App Store | **só Mac** com Xcode e CocoaPods |
+| `android-studio` / `ios-studio` | abre o projeto na IDE | Android Studio / Mac |
+| `sync` | só faz o build do site e copia para `android/` e `ios/` | qualquer um |
+| `assets` | regenera ícones e splash a partir de `mobile/assets/` | qualquer um |
+
+Os arquivos prontos ficam em `mobile/builds/`, com a versão no nome (a versão vem de `mobile/version.json`: aumente `versionCode` a cada envio). Opções: `--url=https://...` (em vez do `.env`) e `--skip-web` (não refaz o build do site).
+
+- **Dentro do app** (User-Agent `ThinkrplayApp`, ver `lib/platform.ts`) ficam **ocultos**: login com Google/Apple (o Google bloqueia login em WebView), compra do Premium (as lojas exigem a cobrança interna delas) e anúncios do AdSense (em app seria AdMob).
+- **Assinar o Android:** gere o keystore uma vez (comando em `mobile/android/keystore.properties.example`), copie o exemplo para `keystore.properties` e **guarde o `.jks`** com a senha: sem ele você não atualiza o app na loja. Esses arquivos ficam fora do git.
+- **Contas de loja:** Google Play Console (taxa única de US$ 25) e Apple Developer Program (US$ 99/ano). O `appId` (`com.thinkrplay.app`, em `mobile/capacitor.config.ts`) não muda depois de publicar.
+- **iOS:** o Xcode só existe no Mac. Copie a pasta `mobile/` (ou clone o repositório) num Mac, rode `npm run build -- ios-archive` e envie pelo Xcode (Window → Organizer), com a sua conta Apple.
+- **Aprovação das lojas:** a Apple costuma recusar apps que são só um site embrulhado (diretriz 4.2); recursos nativos (notificações, compartilhamento) ajudam. Política de privacidade e exclusão de conta (já existem no app) são exigidas pelas duas lojas.
+- **Premium nas lojas:** vender dentro do app exige Google Play Billing / compra integrada da Apple (outro fluxo, não incluso). Por enquanto o Premium só é vendido pela web.
+- O Android já vem com `allowBackup=false` e tráfego só por HTTPS. Os arquivos gerados (`capacitor.config.json`, cópia do site) ficam fora do git: rode `npm run sync` após clonar.
+- **Não foi possível compilar o APK/IPA no ambiente de desenvolvimento** (sem Android SDK/Xcode): o script, a configuração e a sincronização foram testados, mas o primeiro build real é no seu computador.
 
 ## Aceite dos Termos e da Privacidade
 
