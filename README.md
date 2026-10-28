@@ -136,12 +136,14 @@ Cada partida concluída guarda o ritmo (`tempo ÷ mínimo humano`). Em **Cadastr
 Tudo do app nativo (projetos Android e iOS, ícones, configuração e script de build) fica em **`mobile/`**, e você compila **desse diretório só**, escolhendo o tipo de build. O app abre **este mesmo site** num WebView (Capacitor): a sessão, a API, o ranking e as atualizações são as da web, sem manter dois códigos.
 
 ```bash
-cd mobile
+cd mobile             # (ou, da raiz: npm run mobile -- android-emulator)
 cp .env.example .env        # 1ª vez: coloque o endereço HTTPS do site (CAP_SERVER_URL=https://seudominio.com)
 npm install                 # 1ª vez
 npm run build               # menu: escolha qual build gerar
 npm run build -- android-aab --skip-web   # ou direto, sem menu
 ```
+
+> Cuidado: `npm run build` **na raiz** é o build do site (e não aceita o nome do build nativo). Para rodar o nativo sem entrar na pasta, use `npm run mobile -- android-emulator` (na raiz). Em `mobile/`, use `npm run build -- android-emulator`.
 
 | Build | O que gera | Onde roda |
 | --- | --- | --- |

@@ -13,7 +13,7 @@
     "db:admin": "node scripts/create-admin.mjs",
     "db:admin:sql": "node scripts/create-admin.mjs --sql",
     "db:schema": "node scripts/build-schema.mjs",
-    "mobile": "npm --prefix mobile run build"
+    "mobile": "node mobile/build.mjs"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
