@@ -15,8 +15,9 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Versão vem de mobile/version.json (passada pelo build.mjs); sem ela usa 1 / 1.0
-        versionCode (project.findProperty('appVersionCode') ?: '1').toInteger()
-        versionName (project.findProperty('appVersionName') ?: '1.0')
+        // (sem parênteses antes do .toInteger(): em Groovy `versionCode (x).toInteger()` chamaria toInteger() no retorno do método e dava "Value is null")
+        versionCode Integer.parseInt("${project.findProperty('appVersionCode') ?: '1'}")
+        versionName "${project.findProperty('appVersionName') ?: '1.0'}"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
