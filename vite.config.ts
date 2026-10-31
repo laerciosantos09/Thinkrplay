@@ -125,7 +125,7 @@ export default defineConfig(({ mode }) => {
       },
       workbox: {
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/ads\.txt$/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/ads\.txt$/, /^\/sitemap\.xml$/, /^\/robots\.txt$/],
         // As chamadas à API nunca vêm do cache.
         runtimeCaching: [
           { urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/, handler: 'StaleWhileRevalidate', options: { cacheName: 'fonts' } },
