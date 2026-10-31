@@ -204,6 +204,15 @@ Botões extras na tela de login (e **Contas conectadas** no Perfil). Ficam **des
 - **Apple:** o token de atualização é guardado **cifrado** (AES-256-GCM) e é **revogado** ao excluir a conta ou desconectar a Apple (exigência da App Store). Se a revogação falhar, a exclusão é interrompida.
 - Plano Hobby da Vercel: a API usa exatamente **12 funções** (o limite). Uma nova rota precisa entrar dentro de uma função existente.
 
+## Páginas públicas (conteúdo para o Google e para o AdSense)
+
+Quem não está logado vê a **página inicial pública** (não mais a tela de login, que ficou em `/entrar`). Existem também páginas com conteúdo próprio, sem login: `/jogos`, uma por jogo (`/jogos/sudoku`, `/jogos/memory`, `/jogos/sequence`, `/jogos/hanoi`, `/jogos/lights`, `/jogos/mastermind`, com regras, passo a passo e dicas), `/sobre`, `/faq`, `/termos` e `/privacidade`.
+
+- **Texto em `content/public.ts`:** edite lá. A mesma fonte gera a tela em React (`pages/PublicPage.tsx`) e o **HTML pré-renderizado no build** (`vite.config.ts`), que é o que o Google lê sem executar JavaScript. Também gera `sitemap.xml`; `public/robots.txt` libera o site, bloqueia `/api/` e `/entrar` e aponta o sitemap.
+- **Por que isso importa:** o AdSense avalia o conteúdo público do site, e uma SPA que só mostra a tela de login costuma ser recusada. Escreva sempre conteúdo original e útil (evite copiar textos de outros sites).
+- `npm test` roda `scripts/check-public.ts` (títulos e descrições únicos, links internos válidos, uma página por jogo). Depois de publicar, envie `https://thinkrplay.com/sitemap.xml` no Google Search Console.
+- No **app nativo** o login continua sendo a primeira tela.
+
 ## Anúncios (Google AdSense)
 
 A estrutura já está pronta e **desligada por padrão**: nenhum script do Google é carregado até que (1) as variáveis abaixo existam, (2) o administrador ligue o interruptor em **Configurações → Anúncios** e (3) o usuário escolha no aviso de anúncios.

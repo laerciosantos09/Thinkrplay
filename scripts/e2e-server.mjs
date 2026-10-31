@@ -103,7 +103,9 @@ http.createServer(async (req, res) => {
     return handlers[url.pathname.slice(5)]?.(vr, vres) ?? res.writeHead(404).end('{}');
   }
   let file = path.join(root, 'dist', url.pathname);
-  if (!existsSync(file) || !path.extname(file)) file = path.join(root, 'dist', 'index.html');
+  // como a Vercel: /pasta serve pasta/index.html (páginas públicas pré-renderizadas); o resto cai no index.html do app
+  if (!path.extname(file) && existsSync(path.join(file, 'index.html'))) file = path.join(file, 'index.html');
+  else if (!existsSync(file) || !path.extname(file)) file = path.join(root, 'dist', 'index.html');
   res.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream', ...secHeaders });
   res.end(readFileSync(file));
 }).listen(4174, () => console.log('e2e server on 4174'));

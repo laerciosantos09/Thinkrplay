@@ -13,6 +13,8 @@ import AdminUsers from './pages/AdminUsers';
 import Profile from './pages/Profile';
 import Premium from './pages/Premium';
 import LegalPage, { LEGAL_ROUTES } from './pages/Legal';
+import PublicPage from './pages/PublicPage';
+import { HOME, PUBLIC_BY_PATH } from './content/public';
 import VerifyEmailGate from './components/VerifyEmailGate';
 import TermsGate from './components/TermsGate';
 import { SUPPORT_EMAIL } from './config';
@@ -125,8 +127,12 @@ const MainApp: React.FC = () => {
   }
 
   if (!user) {
-    return <Login onLogin={(u) => { setUser(u); setPage('dashboard'); }} initialError={flash.error} pendingLink={flash.pending} />;
+    // Quem não está logado vê a página inicial pública; o login fica em /entrar (e no app nativo e nos retornos do login social, que trazem aviso/erro).
+    const wantsLogin = isNativeApp || window.location.pathname.replace(/\/+$/, '') === '/entrar' || Boolean(flash.error || flash.pending || flash.notice);
+    if (!wantsLogin) return <PublicPage page={HOME} />;
+    return <Login onLogin={(u) => { window.history.replaceState(null, '', '/'); setUser(u); setPage('dashboard'); }} initialError={flash.error} pendingLink={flash.pending} />;
   }
+  if (window.location.pathname.replace(/\/+$/, '') === '/entrar') window.history.replaceState(null, '', '/'); // já logado: /entrar é o painel
 
   // Quem ainda não aceitou a versão atual dos Termos/Privacidade precisa aceitar antes de continuar.
   if (user.needsEmailVerification) return <VerifyEmailGate user={user} onVerified={setUser} onLogout={logout} />;
@@ -193,8 +199,11 @@ const MainApp: React.FC = () => {
 
 // Termos e Privacidade são páginas públicas (/termos e /privacidade), acessíveis sem login.
 const App: React.FC = () => {
-  const legal = LEGAL_ROUTES[window.location.pathname.replace(/\/+$/, '')];
-  return legal ? <LegalPage doc={legal} /> : <MainApp />;
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  const legal = LEGAL_ROUTES[path];
+  const content = path === '/' ? undefined : PUBLIC_BY_PATH[path]; // /jogos, /jogos/<jogo>, /sobre, /faq
+  if (legal) return <LegalPage doc={legal} />;
+  return content ? <PublicPage page={content} /> : <MainApp />;
 };
 
 export default App;
