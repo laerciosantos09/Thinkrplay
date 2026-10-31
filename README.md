@@ -160,7 +160,8 @@ npm run build -- android-aab --skip-web   # ou direto, sem menu
 
 Os arquivos prontos ficam em `mobile/builds/`, com a versão no nome (a versão vem de `mobile/version.json`: aumente `versionCode` a cada envio). Opções: `--url=https://...` (em vez do `.env`) e `--skip-web` (não refaz o build do site).
 
-- **Dentro do app** (User-Agent `ThinkrplayApp`, ver `lib/platform.ts`) ficam **ocultos**: login com Google/Apple (o Google bloqueia login em WebView), compra do Premium (as lojas exigem a cobrança interna delas) e anúncios do AdSense (em app seria AdMob).
+- **Login com Google e Apple no app:** o Google bloqueia login dentro de WebView, então o botão abre o **navegador do sistema** (Custom Tabs no Android, Safari no iOS), faz o login normal (mesmas credenciais e URLs de retorno da web, nada novo a cadastrar no Google/Apple) e volta ao app por `thinkrplay://auth?code=...`, um **código de uso único (2 min)**. O app guarda um segredo que só ele conhece (estilo PKCE: o servidor recebe só o hash) e só ele consegue trocar o código por uma sessão em `/api/oauth/handoff`. Precisa da migração `014` e dos plugins `@capacitor/app` e `@capacitor/browser` (já em `mobile/`; rode `npm install` e `npm run sync` em `mobile/` e gere o app de novo). No app não aparece "Conectar" (precisa do cookie do site): conecte pelo site. Conta com senha ainda não confirmada entra com e-mail e senha.
+- **Dentro do app** (User-Agent `ThinkrplayApp`, ver `lib/platform.ts`) ficam **ocultos**: a compra do Premium (as lojas exigem a cobrança interna delas) e os anúncios do AdSense (em app seria AdMob).
 - **Assinar o Android:** gere o keystore uma vez (comando em `mobile/android/keystore.properties.example`), copie o exemplo para `keystore.properties` e **guarde o `.jks`** com a senha: sem ele você não atualiza o app na loja. Esses arquivos ficam fora do git.
 - **Contas de loja:** Google Play Console (taxa única de US$ 25) e Apple Developer Program (US$ 99/ano). O `appId` (`com.thinkrplay.app`, em `mobile/capacitor.config.ts`) não muda depois de publicar.
 - **iOS:** o Xcode só existe no Mac. Copie a pasta `mobile/` (ou clone o repositório) num Mac, rode `npm run build -- ios-archive` e envie pelo Xcode (Window → Organizer), com a sua conta Apple.
@@ -261,6 +262,7 @@ O SQL fica em **migrações numeradas** (`db/migrations/`). Cada uma roda sozinh
 | `db/migrations/011_email_verification.sql` | Confirmação de e-mail: `email_tokens` e `users.verification_required` |
 | `db/migrations/012_play_signals.sql` | Ritmo das partidas (`plays.pace_ratio`) para o painel de suspeitos |
 | `db/migrations/013_ranking_totals.sql` | Totais do ranking salvos em tabela (`ranking_totals`), recalculados a partir de `scores` (pode rodar de novo para reparar) |
+| `db/migrations/014_app_handoffs.sql` | Códigos de uso único do login social no app nativo (`app_handoffs`) |
 | `db/schema.sql` | Tudo junto, para banco novo. **Gerado** das migrações (`npm run db:schema`) |
 | `scripts/create-admin.mjs` | Cria ou redefine a senha de um admin. Grava **só o hash bcrypt**. |
 | `db/maintenance.sql` | Limpeza periódica de partidas e tentativas antigas |

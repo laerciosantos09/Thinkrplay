@@ -40,6 +40,8 @@ export interface FlowState {
   nonce: string;
   mode: 'login' | 'link';
   uid?: string; // usuário logado, quando mode = link
+  app?: boolean; // login iniciado no app nativo: volta por código de uso único (api/_lib/handoff.ts)
+  challenge?: string; // hash do segredo do app (só com app)
 }
 const COOKIE = 'oauth_state';
 const secret = () => {

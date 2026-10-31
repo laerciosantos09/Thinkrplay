@@ -4,6 +4,7 @@ import { APP_TAGLINE } from '../config';
 import Logo from '../components/Logo';
 import SocialButtons from '../components/SocialButtons';
 import { isNativeApp } from '../lib/platform';
+import { startNativeLogin } from '../lib/native';
 import { fetchProviders, login, recoverPassword, register } from '../services/api';
 
 type Mode = 'login' | 'register' | 'recover';
@@ -29,7 +30,6 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
 
   // Botões do Google/Apple só aparecem se o administrador ligou e o servidor está configurado.
   useEffect(() => {
-    if (isNativeApp) return; // login social não funciona no WebView do app nativo
     fetchProviders()
       .then((r) => setSocial((['google', 'apple'] as LoginProvider[]).filter((p) => r[p])))
       .catch(() => {});
@@ -151,7 +151,8 @@ const Login: React.FC<{ onLogin: (user: User) => void; initialError?: string | n
             <div className="flex items-center gap-3 text-xs font-bold text-slate-400 uppercase mb-4">
               <span className="flex-1 h-px bg-slate-100" />ou<span className="flex-1 h-px bg-slate-100" />
             </div>
-            <SocialButtons providers={social} verb={mode === 'register' ? 'Cadastrar com' : 'Entrar com'} />
+            <SocialButtons providers={social} verb={mode === 'register' ? 'Cadastrar com' : 'Entrar com'}
+              onNative={isNativeApp ? (p) => { setError(null); startNativeLogin(p).catch((e) => setError(e instanceof Error ? e.message : 'Não foi possível abrir o login.')); } : undefined} />
             {mode === 'register' && <p className="mt-3 text-center text-xs text-slate-400">No primeiro acesso você precisará aceitar os Termos de Uso e a Política de Privacidade.</p>}
           </div>
         )}

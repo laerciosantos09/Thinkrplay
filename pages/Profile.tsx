@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { LoginProvider, User } from '../types';
 import { AppSettings, PremiumState } from '../services/api';
 import { changePassword, changeSecret, deleteAccount, logoutEverywhere, unlinkProvider, updateUsername } from '../services/api';
+import { isNativeApp } from '../lib/platform';
 import { PROVIDER_NAMES, ProviderIcon } from '../components/SocialButtons';
 import LoginBadges, { METHOD_NAMES } from '../components/LoginBadges';
 import { USERNAME_PATTERN } from '../lib/legal';
@@ -234,7 +235,9 @@ const Profile: React.FC<ProfileProps> = ({ user, premium, login, onPremium, onUs
                       {connBusy === p ? '...' : 'Desconectar'}
                     </button>
                   ) : (
-                    <a href={`/api/oauth/${p}?link=1`} className="text-sm font-black px-4 py-2 rounded-xl bg-brand-600 text-white hover:bg-brand-700">Conectar</a>
+                    isNativeApp
+                      ? <span className="text-xs text-slate-400 text-right">Conecte pelo site</span>
+                      : <a href={`/api/oauth/${p}?link=1`} className="text-sm font-black px-4 py-2 rounded-xl bg-brand-600 text-white hover:bg-brand-700">Conectar</a>
                   )}
                 </li>
               );

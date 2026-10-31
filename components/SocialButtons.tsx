@@ -18,15 +18,16 @@ export const ProviderIcon: React.FC<{ provider: LoginProvider; className?: strin
   );
 
 // Os botões são links comuns: o login acontece com o navegador indo ao provedor e voltando para o app.
-const SocialButtons: React.FC<{ providers: LoginProvider[]; query?: string; verb?: string }> = ({ providers, query = '', verb = 'Continuar com' }) => (
+const SocialButtons: React.FC<{ providers: LoginProvider[]; query?: string; verb?: string; onNative?: (p: LoginProvider) => void }> = ({ providers, query = '', verb = 'Continuar com', onNative }) => (
   <div className="space-y-3">
-    {providers.map((p) => (
-      <a key={p} href={`/api/oauth/${p}${query}`}
-        className={`w-full flex items-center justify-center gap-3 py-3.5 rounded-xl font-bold border-2 transition-all ${p === 'apple' ? 'bg-black border-black text-white hover:bg-slate-800' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
-        <ProviderIcon provider={p} />
-        {verb} {PROVIDER_NAMES[p]}
-      </a>
-    ))}
+    {providers.map((p) => {
+      const cls = `w-full flex items-center justify-center gap-3 py-3.5 rounded-xl font-bold border-2 transition-all ${p === 'apple' ? 'bg-black border-black text-white hover:bg-slate-800' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`;
+      const content = <><ProviderIcon provider={p} />{verb} {PROVIDER_NAMES[p]}</>;
+      // No app nativo o login abre no navegador do sistema (o Google bloqueia WebView); no site é um link comum.
+      return onNative
+        ? <button key={p} type="button" onClick={() => onNative(p)} className={cls}>{content}</button>
+        : <a key={p} href={`/api/oauth/${p}${query}`} className={cls}>{content}</a>;
+    })}
   </div>
 );
 

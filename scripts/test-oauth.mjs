@@ -6,6 +6,7 @@ import path from 'node:path';
 import assert from 'node:assert/strict';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import bcrypt from 'bcryptjs';
+import { createHash, randomBytes } from 'node:crypto';
 import { SignJWT, exportJWK, exportPKCS8, generateKeyPair } from 'jose';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,7 +77,7 @@ const run = async (handler, { method, query = {}, body, headers = {} } = {}) => 
   const res = {
     statusCode: 200, headers: hdrs,
     setHeader(k, v) { hdrs[k.toLowerCase()] = v; }, getHeader(k) { return hdrs[k.toLowerCase()]; },
-    status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; }, end() { return this; },
+    status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; }, end(b) { if (b !== undefined) this.text = b; return this; },
   };
   await handler({ method, query, body, headers: { host: 'app.test', origin: 'https://app.test', 'content-type': 'application/json', cookie: cookieHeader(), 'x-forwarded-for': '9.9.9.9', ...headers }, socket: {} }, res);
   setCookies(res.headers['set-cookie']);
@@ -220,6 +221,70 @@ assert.equal((await api('login', { body: { email: 'vitima@gmail.com', password: 
 jar.set('session', impCookie);
 assert.equal((await api('profile', { method: 'GET' })).statusCode, 401, 'sessão do impostor encerrada');
 jar.clear();
+
+// ---- app nativo (Android/iOS): o login roda no navegador do sistema e volta ao app por código de uso único
+const appVerifier = randomBytes(32).toString('base64url');
+const appChallenge = createHash('sha256').update(appVerifier).digest('base64url');
+const appCode = (r) => new URL(r.text.match(/thinkrplay:\/\/auth\?[^"<\s]+/)[0]).searchParams.get('code');
+jar.clear();
+let ar = await api('oauth', { query: { provider: 'google', app: '1' } });
+assert.match(ar.text, /thinkrplay:\/\/auth\?error=unavailable/, 'sem challenge o app recebe erro por esquema');
+assert.equal(ar.headers.location, undefined);
+ar = await api('oauth', { query: { provider: 'google', app: '1', challenge: 'curta' } });
+assert.match(ar.text, /error=unavailable/, 'challenge inválida');
+// conectar conta não existe no app (precisa do cookie do site)
+f = await begin('google', { app: '1', challenge: appChallenge });
+assert.equal(f.u.origin, 'https://accounts.google.com');
+ar = await finish('google', f.state, { claims: { sub: 'g-1', email: 'ana@gmail.com', email_verified: true } });
+assert.equal(ar.statusCode, 200);
+assert.match(ar.headers['content-type'], /text\/html/);
+assert.ok(!jar.has('session'), 'o navegador do sistema NÃO recebe a sessão do app');
+assert.match(ar.text, /<meta http-equiv="refresh" content="0;url=thinkrplay:\/\/auth\?code=/, 'volta ao app sem script (CSP)');
+const code1 = appCode(ar);
+const handoff = (code, verifier) => api('oauth', { query: { provider: 'handoff', code, verifier } });
+assert.equal(loc(await handoff(code1, 'x'.repeat(43))), '/?auth_error=failed', 'verifier errado (outro app/link de terceiro)');
+assert.equal(loc(await handoff('lixo', appVerifier)), '/?auth_error=failed');
+assert.equal(loc(await handoff("' OR 1=1 --", appVerifier)), '/?auth_error=failed');
+assert.ok(!jar.has('session'));
+let hr = await handoff(code1, appVerifier);
+assert.equal(loc(hr), '/', 'o app troca o código por sessão');
+assert.ok(jar.get('session'));
+assert.equal((await okJson('profile', { method: 'GET' })).user.email, 'ana@gmail.com');
+jar.clear();
+assert.equal(loc(await handoff(code1, appVerifier)), '/?auth_error=failed', 'código de uso único');
+assert.ok(!jar.has('session'));
+assert.equal((await pg.query(`SELECT count(*)::int n FROM app_handoffs WHERE code_hash = $1`, [createHash('sha256').update(code1).digest('base64url')])).rows[0].n, 1);
+assert.ok(!(await pg.query(`SELECT code_hash FROM app_handoffs`)).rows.some((r) => r.code_hash === code1), 'só o hash do código fica no banco');
+// código expirado
+f = await begin('google', { app: '1', challenge: appChallenge });
+ar = await finish('google', f.state, { claims: { sub: 'g-1', email: 'ana@gmail.com', email_verified: true } });
+const code2 = appCode(ar);
+await pg.query(`UPDATE app_handoffs SET expires_at = now() - interval '1 second'`);
+assert.equal(loc(await handoff(code2, appVerifier)), '/?auth_error=failed', 'expirado');
+// erros voltam ao app por esquema, também com o usuário cancelando
+f = await begin('google', { app: '1', challenge: appChallenge });
+ar = await api('oauth', { query: { provider: 'google', error: 'access_denied', state: f.state } });
+assert.match(ar.text, /thinkrplay:\/\/auth\?error=cancelled/);
+f = await begin('google', { app: '1', challenge: appChallenge });
+ar = await finish('google', f.state, { claims: { sub: 'g-app-x', email: 'naoverificado@gmail.com', email_verified: false } });
+assert.match(ar.text, /error=unverified_email/);
+// conta com senha e e-mail nunca verificado: no app não dá para confirmar a senha, então pede e-mail e senha
+await pg.query(`INSERT INTO users (username, email, password_hash, secret_hash) VALUES ('soapp', 'soapp@gmail.com', $1, 'h')`, [await bcrypt.hash('senha-soapp-1', 4)]);
+f = await begin('google', { app: '1', challenge: appChallenge });
+ar = await finish('google', f.state, { claims: { sub: 'g-soapp', email: 'soapp@gmail.com', email_verified: true } });
+assert.match(ar.text, /error=email_in_use/);
+assert.ok(!jar.has('session') && !jar.has('oauth_pending'));
+assert.equal((await pg.query(`SELECT count(*)::int n FROM oauth_identities WHERE provider_user_id = 'g-soapp'`)).rows[0].n, 0);
+// app + link=1 é recusado (o app não tem o cookie do site)
+ar = await api('oauth', { query: { provider: 'google', app: '1', link: '1', challenge: appChallenge } });
+assert.match(ar.text, /error=session/);
+// conta nova criada pelo app
+f = await begin('google', { app: '1', challenge: appChallenge });
+ar = await finish('google', f.state, { claims: { sub: 'g-appnew', email: 'appnovo@gmail.com', email_verified: true, name: 'App Novo' } });
+assert.equal(loc(await handoff(appCode(ar), appVerifier)), '/');
+assert.equal((await okJson('profile', { method: 'GET' })).user.signupMethod, 'google');
+jar.clear();
+await pg.query(`DELETE FROM users WHERE username IN ('soapp', 'AppNovo')`);
 
 // ---- Apple: POST form_post, nome só na primeira vez, token de atualização cifrado
 f = await begin('apple');
