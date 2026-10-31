@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /entrar
+
+Sitemap: https://thinkrplay.com/sitemap.xml
