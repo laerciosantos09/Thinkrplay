@@ -19,6 +19,7 @@ const MIGRATIONS: Record<string, string> = {
   email_tokens: '011_email_verification.sql',
   pace_ratio: '012_play_signals.sql',
   ranking_totals: '013_ranking_totals.sql',
+  app_handoffs: '014_app_handoffs.sql',
 };
 
 // Variáveis recomendadas que estão faltando (só o administrador vê o aviso).
@@ -67,6 +68,7 @@ export default route(['GET', 'POST'], async (req) => {
            EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'privacy_version') AS privacy_version,
            to_regclass('public.email_tokens') IS NOT NULL AS email_tokens,
            to_regclass('public.ranking_totals') IS NOT NULL AS ranking_totals,
+           to_regclass('public.app_handoffs') IS NOT NULL AS app_handoffs,
            EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'plays' AND column_name = 'pace_ratio') AS pace_ratio`)[0];
   const missing = Object.keys(MIGRATIONS).filter((table) => !present[table]).map((table) => MIGRATIONS[table]);
   // Não oferece um plano que não dá para contratar: sem a tabela de assinaturas (006 pendente) o Premium fica indisponível.

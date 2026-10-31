@@ -1,4 +1,5 @@
 -- ATENÇÃO: APAGA TODOS OS DADOS (usuários, pontuações, progresso). Use só em desenvolvimento.
+DROP TABLE IF EXISTS app_handoffs CASCADE;
 DROP TABLE IF EXISTS ranking_totals CASCADE;
 DROP TABLE IF EXISTS email_tokens CASCADE;
 DROP TABLE IF EXISTS oauth_identities CASCADE;

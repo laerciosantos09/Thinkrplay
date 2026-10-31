@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../_lib/db.js';
 import { requireSession, startSession } from '../_lib/http.js';
+import { CHALLENGE_RE, consumeHandoff, handoffReady, issueHandoff, returnToApp } from '../_lib/handoff.js';
 import {
   PROVIDERS, authorizeUrl, clearStateCookie, pendingCookie, createOAuthUser, encryptToken, exchangeCode, identitiesTableExists, isProvider,
   providerAvailable, randomToken, readStateCookie, safeEqual, stateCookie, verifyIdToken, type FlowState, type Identity, type Provider,
@@ -11,6 +12,8 @@ import {
 //   GET  /api/oauth/google|apple        -> começa o login (?link=1 liga a um usuário já logado)
 //   GET  /api/oauth/google              -> retorno do Google (?code&state)
 //   POST /api/oauth/apple               -> retorno da Apple (form_post: code, state, user)
+//   GET  /api/oauth/google?app=1&challenge=...  -> igual, mas para o app nativo: termina em thinkrplay://auth?code=...
+//   GET  /api/oauth/handoff?code&verifier       -> o app troca o código por uma sessão (dentro do WebView)
 // Quem chama é o navegador, então os resultados voltam como redirecionamento para o app (/?auth_error=... ou /).
 
 const go = (res: VercelResponse, location: string) => {
@@ -34,7 +37,9 @@ const readForm = async (req: VercelRequest): Promise<Record<string, any>> => {
 };
 
 const start = async (req: VercelRequest, res: VercelResponse, p: Provider) => {
-  if (!(await providerAvailable(p))) return fail(res, 'unavailable');
+  const fromApp = req.query.app === '1';
+  const bail = (code: string) => (fromApp ? returnToApp(res, { error: code }) : fail(res, code)); // o app espera o erro por thinkrplay://
+  if (!(await providerAvailable(p))) return bail('unavailable');
   let mode: FlowState['mode'] = 'login';
   let uid: string | undefined;
   if (req.query.link === '1') {
@@ -42,10 +47,17 @@ const start = async (req: VercelRequest, res: VercelResponse, p: Provider) => {
       uid = (await requireSession(req)).id;
       mode = 'link';
     } catch {
-      return fail(res, 'session');
+      return bail('session');
     }
   }
-  const flow: FlowState = { provider: p, state: randomToken(), nonce: randomToken(), mode, uid };
+  let app = false;
+  let challenge: string | undefined;
+  if (req.query.app === '1') { // app nativo: só login (não "conectar") e com a challenge do app
+    challenge = String(req.query.challenge ?? '');
+    if (mode !== 'login' || !CHALLENGE_RE.test(challenge) || !(await handoffReady())) return bail('unavailable');
+    app = true;
+  }
+  const flow: FlowState = { provider: p, state: randomToken(), nonce: randomToken(), mode, uid, ...(app ? { app, challenge } : {}) };
   res.setHeader('Set-Cookie', await stateCookie(req, flow));
   go(res, authorizeUrl(req, p, flow));
 };
@@ -61,8 +73,15 @@ const callback = async (req: VercelRequest, res: VercelResponse, p: Provider) =>
   const flow = await readStateCookie(req);
   addCookie(res, clearStateCookie(req)); // o estado vale uma única vez
   if (!flow || flow.provider !== p || !params.state || !safeEqual(String(params.state), flow.state)) return fail(res, 'state');
-  if (params.error || !params.code) return fail(res, 'cancelled');
-  if (!(await providerAvailable(p))) return fail(res, 'unavailable');
+  // No app nativo o resultado (erro ou código) volta pelo esquema thinkrplay://; no site, por redirecionamento.
+  const failFlow = (code: string) => (flow.app ? returnToApp(res, { error: code }) : fail(res, code));
+  const signIn = async (user: { id: string; version: number }) => {
+    if (flow.app) return returnToApp(res, { code: await issueHandoff(user.id, flow.challenge!) });
+    await startSession(req, res, user);
+    go(res, '/');
+  };
+  if (params.error || !params.code) return failFlow('cancelled');
+  if (!(await providerAvailable(p))) return failFlow('unavailable');
 
   let identity: Identity;
   let refresh: string | undefined;
@@ -72,7 +91,7 @@ const callback = async (req: VercelRequest, res: VercelResponse, p: Provider) =>
     identity = await verifyIdToken(p, tokens.id_token, flow.nonce);
   } catch (err) {
     console.error(`OAuth ${p}: validação falhou:`, err instanceof Error ? err.message : err);
-    return fail(res, 'failed');
+    return failFlow('failed');
   }
   if (p === 'apple' && params.user && !identity.name) {
     try { // a Apple só manda o nome na primeira autorização, num campo à parte
@@ -111,11 +130,10 @@ const callback = async (req: VercelRequest, res: VercelResponse, p: Provider) =>
   // ---- entrar ----
   if (existing) {
     await saveToken(p, identity.providerUserId, refresh);
-    await startSession(req, res, { id: existing.user_id, version: existing.token_version });
-    return go(res, '/');
+    return signIn({ id: existing.user_id, version: existing.token_version });
   }
   // Sem identidade conhecida: precisa de e-mail verificado pelo provedor.
-  if (!identity.email || !identity.emailVerified) return fail(res, 'unverified_email');
+  if (!identity.email || !identity.emailVerified) return failFlow('unverified_email');
   const owner = (await sql`SELECT id, token_version, email_verified, password_hash, coalesce((to_jsonb(users)->>'verification_required')::boolean, false) AS verification_required FROM users WHERE lower(email) = ${identity.email}`)[0];
   if (owner && owner.verification_required && !owner.email_verified && owner.password_hash) {
     // Cadastro com senha que NUNCA confirmou o e-mail, e agora o dono de verdade prova o e-mail pelo provedor: a conta é dele.
@@ -130,20 +148,19 @@ const callback = async (req: VercelRequest, res: VercelResponse, p: Provider) =>
     if (owner.email_verified || !owner.password_hash) {
       await sql`INSERT INTO oauth_identities (provider, provider_user_id, user_id, email) VALUES (${p}, ${identity.providerUserId}, ${owner.id}, ${identity.email}) ON CONFLICT DO NOTHING`;
       await saveToken(p, identity.providerUserId, refresh);
-      await startSession(req, res, { id: owner.id, version: owner.token_version });
-      return go(res, '/');
+      return signIn({ id: owner.id, version: owner.token_version });
     }
     // Conta criada com senha e e-mail nunca verificado: o cadastro por senha não prova que o e-mail é de quem o digitou,
     // então só conecta depois de a pessoa confirmar a senha da conta (evita tomada de conta por cadastro antecipado).
+    if (flow.app) return failFlow('email_in_use'); // a confirmação da senha acontece no site: no app, entre com e-mail e senha
     addCookie(res, await pendingCookie(req, { provider: p, sub: identity.providerUserId, email: identity.email, refresh: refresh ? encryptToken(refresh) : undefined }));
     return go(res, `/?auth_link=${p}`);
   }
   const created = await createOAuthUser(identity, p);
-  if (!created) return fail(res, 'email_in_use');
+  if (!created) return failFlow('email_in_use');
   await sql`INSERT INTO oauth_identities (provider, provider_user_id, user_id, email) VALUES (${p}, ${identity.providerUserId}, ${created.id}, ${identity.email}) ON CONFLICT DO NOTHING`;
   await saveToken(p, identity.providerUserId, refresh);
-  await startSession(req, res, { id: created.id, version: created.token_version });
-  go(res, '/');
+  return signIn({ id: created.id, version: created.token_version });
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -155,6 +172,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const p of PROVIDERS) out[p] = tableOk && (await providerAvailable(p));
       res.setHeader('Cache-Control', 'no-store');
       return void res.status(200).json(out);
+    }
+    if (slug === 'handoff') { // o app (WebView) troca o código de uso único por uma sessão
+      if (req.method !== 'GET') return void res.status(405).json({ error: 'Método não permitido.' });
+      const user = await consumeHandoff(String(req.query.code ?? ''), String(req.query.verifier ?? ''));
+      if (!user) return fail(res, 'failed');
+      await startSession(req, res, { id: user.id, version: user.token_version });
+      return go(res, '/');
     }
     if (!isProvider(slug)) return void res.status(404).json({ error: 'Provedor desconhecido.' });
     const isCallback = req.method === 'POST' || Boolean(req.query.code) || Boolean(req.query.error);

@@ -22,6 +22,7 @@ import { EnergyProvider } from './components/energy/EnergyContext';
 import Navbar from './components/Navbar';
 import { GameSetting, LoginProvider, User } from './types';
 import { isNativeApp } from './lib/platform';
+import { listenNativeLoginReturn } from './lib/native';
 import { AUTH_ERRORS, AUTH_NOTICES } from './lib/authMessages';
 import { AppSettings, EnergySettings, EnergyState, PremiumState, fetchProfile, fetchSettings, logout as apiLogout, setTermsRequiredHandler, setUnauthorizedHandler } from './services/api';
 
@@ -69,6 +70,7 @@ const MainApp: React.FC = () => {
   }, [clear]);
 
   useEffect(() => setUnauthorizedHandler(clear), [clear]);
+  useEffect(() => listenNativeLoginReturn(), []); // app nativo: volta do login pelo navegador do sistema
   // O servidor recusou por falta de aceite (ex.: versão nova dos termos): recarrega o perfil e volta para a tela de aceite.
   useEffect(() => setTermsRequiredHandler(() => { fetchProfile().then((r) => setUser(r.user)).catch(() => {}); }), []);
 
@@ -167,7 +169,7 @@ const MainApp: React.FC = () => {
         ) : page === 'ranking' ? (
           <GlobalRanking onBack={home} isEnabled={isEnabled} />
         ) : page === 'profile' ? (
-          <Profile user={user} premium={isNativeApp ? null : premium} login={isNativeApp ? null : login} onPremium={() => setPage('premium')} onUserChange={setUser} onDeleted={clear} onBack={home} />
+          <Profile user={user} premium={isNativeApp ? null : premium} login={login} onPremium={() => setPage('premium')} onUserChange={setUser} onDeleted={clear} onBack={home} />
         ) : page === 'premium' && premium ? (
           <Premium premium={premium} energy={energy} justPaid={justPaid} onRefresh={refreshSettings} onBack={() => { setJustPaid(false); home(); }} />
         ) : page === 'users' && isAdmin ? (

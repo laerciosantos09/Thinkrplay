@@ -37,7 +37,7 @@ await run(viaSchema, readFileSync(new URL('db/schema.sql', root), 'utf8'));
 const expected = await snapshot(viaMigrations);
 assert.deepEqual(await snapshot(viaSchema), expected, 'schema.sql e migrações divergem');
 const tables = [...new Set(expected.columns.map((c) => c.table_name))];
-assert.deepEqual(tables, ['app_settings', 'auth_attempts', 'email_tokens', 'game_settings', 'oauth_identities', 'play_energy', 'plays', 'ranking_totals', 'scores', 'stripe_events', 'subscriptions', 'tier_progress', 'users'], 'tabelas esperadas');
+assert.deepEqual(tables, ['app_handoffs', 'app_settings', 'auth_attempts', 'email_tokens', 'game_settings', 'oauth_identities', 'play_energy', 'plays', 'ranking_totals', 'scores', 'stripe_events', 'subscriptions', 'tier_progress', 'users'], 'tabelas esperadas');
 console.log(`banco novo OK (${tables.join(', ')})`);
 
 // 3) bancos de versões antigas (histórico do git; ignora as que não estiverem disponíveis)
