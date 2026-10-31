@@ -4,9 +4,14 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// Gera /ads.txt (exigido pelo AdSense) a partir de VITE_ADSENSE_CLIENT; sem a variável, o arquivo não é criado.
+// A partir de VITE_ADSENSE_CLIENT gera o /ads.txt (exigido pelo AdSense) e a meta tag "google-adsense-account", que o Google usa
+// para confirmar o site (não carrega anúncios nem cookies: o script só entra depois do consentimento). Sem a variável, nada é gerado.
 const adsTxt = (client?: string): Plugin => ({
   name: 'thinkrplay-ads-txt',
+  transformIndexHtml(html) {
+    if (!client || !/^ca-pub-\d+$/.test(client)) return html;
+    return html.replace('</head>', `    <meta name="google-adsense-account" content="${client}" />\n  </head>`);
+  },
   generateBundle() {
     if (!client) return;
     const publisher = client.replace(/^ca-/, '');
